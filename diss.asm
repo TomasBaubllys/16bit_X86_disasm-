@@ -80,7 +80,7 @@ JUMPS																		; for conditional long jumps
 				db 7Eh, 05h, 'jle '
 				db 7Fh, 04h, 'jg '
 				
-	opcode_table_std_reg_mod00 db 00h, 09h, '[bx + si'
+	opcode_table_reg_mod00 db 00h, 09h, '[bx + si'
 							   db 01h, 09h, '[bx + di'
 							   db 02h, 09h, '[bp + si'
 							   db 03h, 09h, '[bp + di'
@@ -89,6 +89,12 @@ JUMPS																		; for conditional long jumps
 							   db 06h, 02h, 0
 							   db 07h, 04h, '[bx'
 							   
+	
+	opcode_table_sr db 00h, 'es'
+					db 01h, 'cs'
+					db 02h, 'ss'
+					db 03h, 'ds'
+	
 	_bp_ db 00, 04h, '[bp' 
 				
 .code
@@ -223,11 +229,8 @@ handle_0111 proc
 	
 	call move_di_to_bx_scnd_byte					; copy conditional jump call to buffer
 	
-	inc si											; move to the next byte
-	
 	call handle_buffer_in						; check if we ran out of buffer_in
 	
-	dec [buffer_in_size]							; since moving to the next byte decrease the buffer_in size
 	mov al, byte ptr [si]	
 	call mov_byte_hex_buffer_out					; move the jump address to the buffer
 	
@@ -470,17 +473,14 @@ handle_1011 proc
 	
 	mov di, 1										; di is the endian flag now
 	
-	inc si											; move to the next byte		
 	inc [current_address]
 	call handle_buffer_in						; check if we ran out of buffer_in
 
-	dec [buffer_in_size]						; decrement our byte stream size SHOULD BE + 1 to account for big endian
 	mov al, byte ptr[si]						; print the next bytes value 
 	call mov_byte_hex_buffer_out
 
 	
 	_skip_one_mov_imm:
-		inc si
 		inc [current_address]		
 		call handle_buffer_in
 	
@@ -503,29 +503,63 @@ endp
 
 ; assumes the byte is in al
 handle_1000 proc
-	push dx
+	push dx cx
 	
 	lea bx, buffer_out
 	
 	; mov current address into buffer out
+	push ax dx
 	mov ax, [current_address]
 	call mov_word_hex_buffer_out
 	COLON_BUFFER_OUT
 	WHITE_SPACE_BUFFER_OUT
+	pop dx ax
 	
+	; check if the call was 1000_10dw
 	mov dl, al
 	and dl, 0Ch
+	cmp dl, 08h
+	je _handle_1000_10_l
 	
-	cmp dl, 0Ah
+	;; check if the call was other
+	mov dl, al
+	and dl, 0Dh
+	cmp dl, 0Ch
+	je _handle_1000_1000_11x0_l
 	
-	_handle_1000_10_jmp:
+	_handle_1000_1000_11x0_l:
+	call handle_1000_11x0
+	jmp _handle_1000_ret
+	
+	_handle_1000_10_l:
 	call handle_1000_10
+	jmp _handle_1000_ret
 	
 	_handle_1000_ret:
 	
-	pop dx
+	pop cx dx
 	ret
 endp 
+
+handle_1000_11x0 proc
+	push cx
+	
+	; extract the direction byte from al
+	push ax
+	and al, 02h
+	shr al, 1
+	mov byte ptr [_d], al
+	pop ax
+	
+	; move to the next byte 
+	call handle_buffer_in
+	
+	
+	NEW_LINE_BUFFER_OUT
+	call handle_buffer_out
+	pop cx
+	ret 
+endp
 
 ; handles mov reg <-> mem/reg
 handle_1000_10 proc
@@ -551,7 +585,6 @@ handle_1000_10 proc
 	mov byte ptr [_w], al
 	
 	; move to the next byte
-	inc si
 	call handle_buffer_in
 	
 	; get mod
@@ -721,7 +754,7 @@ endp
 
 ; expects bx to be the first byte to write to, al to be the registers code
 mov_mod00_reg_to_bx proc 
-	lea di, opcode_table_std_reg_mod00
+	lea di, opcode_table_reg_mod00
 	
 	; expects di to point to our opcode table
 	_mov_mod00_reg_to_bx_look_up:
@@ -745,14 +778,10 @@ mov_mod00_reg_to_bx proc
 	push ax										; preserve the current byte
 	SQRBR_L_BUFFER_OUT							; add a square bracket [
 	
-	inc si
-	dec [buffer_in_size]
 	call handle_buffer_in
 	mov al,  byte ptr [si]
 	call mov_byte_hex_buffer_out
 	
-	inc si
-	dec [buffer_in_size]
 	call handle_buffer_in
 	mov al,  byte ptr [si]
 	call mov_byte_hex_buffer_out
@@ -768,7 +797,7 @@ endp
 	
 ; expects bx to be the first byte to write to, al to be the registers code
 mov_mod0110_reg_to_bx proc 
-	lea di, opcode_table_std_reg_mod00
+	lea di, opcode_table_reg_mod00
 	
 	; expects di to point to our opcode table
 	_mov_mod0110_reg_to_bx_look_up:
@@ -799,15 +828,11 @@ mov_mod0110_reg_to_bx proc
 	
 	mov di, 1									; set di to 1 as a flag to know if we need to swap bytes
 	
-	inc si
-	dec [buffer_in_size]
 	call handle_buffer_in
 	mov al,  byte ptr [si]
 	call mov_byte_hex_buffer_out
 	
 	mov_mod0110_reg_to_bx_skip_byte:
-	inc si
-	dec [buffer_in_size]
 	call handle_buffer_in
 	mov al,  byte ptr [si]
 	call mov_byte_hex_buffer_out
@@ -903,14 +928,10 @@ handle_1010_00 proc
 	; read the next two bytes and move them to buffer_out
 	SQRBR_L_BUFFER_OUT
 	
-	inc si
 	call handle_buffer_in	
-	dec [buffer_in_size]
 	mov al, byte ptr [si]
 	
-	inc si
 	call handle_buffer_in	
-	dec [buffer_in_size]
 	mov ah, byte ptr [si]
 	call mov_word_hex_buffer_out
 	
@@ -923,14 +944,10 @@ handle_1010_00 proc
 		
 		SQRBR_L_BUFFER_OUT
 		; read the next two bytes and move them to buffer_out
-		inc si
 		call handle_buffer_in	
-		dec [buffer_in_size]
 		mov al, byte ptr [si]
 		
-		inc si
 		call handle_buffer_in	
-		dec [buffer_in_size]
 		mov ah, byte ptr [si]
 		call mov_word_hex_buffer_out
 		
