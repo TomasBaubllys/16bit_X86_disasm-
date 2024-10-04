@@ -144,6 +144,9 @@ start:
 		cmp bl, 08h
 		je handle_1000_l
 		
+		cmp bl, 0Ah
+		je handle_1010_l
+		
 		jmp _continue_loop
 		
 		handle_1011_l:
@@ -157,6 +160,9 @@ start:
 		handle_1000_l:
 		call handle_1000
 		jmp _continue_loop
+		
+		handle_1010_l:
+		call handle_1010
 		
 		_continue_loop:
 			inc si
@@ -451,25 +457,7 @@ handle_1011 proc
 	pop di
 	
 	; move the registers name [ ax, ] to buffer_out 
-	xor ch, ch
-	mov cl, OPC_REG_NAME_LEN - 1						; -1 because first byte is the code so we need to copy one byte less					
-	
-	push ds es cx di si
-		inc di										; move to the beginning of the opcode
-		mov ax, ds									; es == ds
-		mov es, ax
-
-		mov ax, di
-		mov di, bx
-		mov si, ax
-		
-		rep movsb
-		
-	pop si di cx es ds
-	
-	; add to bx the ammount we moved
-	add bx, cx
-	add [buffer_out_size], cl
+	call move_wreg_to_bx
 	
 	; add a comma and space
 
@@ -833,5 +821,161 @@ mov_mod0110_reg_to_bx proc
 	ret
 	
 endp
+
+; assumes the byte is in al
+handle_1010 proc
+	push bx
+	mov bl, al					; save ax for now
 	
+	; extract [_w]
+	shl bl, 7
+	shr bl, 7	
+	mov [_w], bl
+	
+	; extract imaginary [_d]
+	mov bl, al 
+	and bl, 02h
+	shr bl, 1
+	mov [_d], bl
+		
+	mov bl, al
+	and bl, 0Fh
+	shr bl, 2
+	
+	cmp bl, 00h
+	je handle_1010_00_l
+
+	handle_1010_00_l:
+	call handle_1010_00
+
+	pop bx
+	ret
+endp
+
+; move ax <-> mem, assumes byte -> al, and bx -> buffer out, si -> buffer_in
+handle_1010_00 proc
+	push cx dx
+	; load buffer out to bx
+	lea bx, buffer_out
+	
+	; mov current address into buffer out
+	mov ax, [current_address]
+	call mov_word_hex_buffer_out
+	COLON_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+
+	push di
+	lea di, mov_str
+	mov cx, mov_str_len
+	call move_command_to_bffr
+	pop di
+	
+	;; handle if [_d] == 0, mov ax, mem
+	cmp [_d], 0
+	jne handle_1010_00_d1
+	
+	; check if al or ax was used
+	cmp [_w], 0
+	jne handle_1010_00_d0w1
+	
+		; move 'al' to buffer_out
+		lea di, opcode_table_std_breg_nr
+		
+	handle_1010_00_d0w1:
+		; move 'ax' to buffer_out
+		lea di, opcode_table_std_wreg_nr
+	
+	; move the register
+	call move_wreg_to_bx
+	
+	; add a white space and a comma
+	COMMA_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+	
+	; read the next two bytes and move them to buffer_out
+	SQRBR_L_BUFFER_OUT
+	
+	inc si
+	call handle_buffer_in	
+	dec [buffer_in_size]
+	mov al, byte ptr [si]
+	
+	inc si
+	call handle_buffer_in	
+	dec [buffer_in_size]
+	mov ah, byte ptr [si]
+	call mov_word_hex_buffer_out
+	
+	SQRBR_R_BUFFER_OUT
+	
+	jmp handle_1010_00_exit
+	
+	;; handle if [_d] == 1 mov mem, ax 
+	handle_1010_00_d1:
+		
+		SQRBR_L_BUFFER_OUT
+		; read the next two bytes and move them to buffer_out
+		inc si
+		call handle_buffer_in	
+		dec [buffer_in_size]
+		mov al, byte ptr [si]
+		
+		inc si
+		call handle_buffer_in	
+		dec [buffer_in_size]
+		mov ah, byte ptr [si]
+		call mov_word_hex_buffer_out
+		
+		SQRBR_R_BUFFER_OUT
+		
+		; add a white space and a comma
+		COMMA_BUFFER_OUT
+		WHITE_SPACE_BUFFER_OUT
+		
+		cmp [_w], 0
+		jne handle_1010_00_d1w1
+	
+		; move 'al' to buffer_out
+		lea di, opcode_table_std_breg_nr
+		
+		handle_1010_00_d1w1:
+		; move 'ax' to buffer_out
+		lea di, opcode_table_std_wreg_nr
+	
+		; move the register
+		call move_wreg_to_bx
+
+
+	handle_1010_00_exit:
+	
+	NEW_LINE_BUFFER_OUT
+	
+	call handle_buffer_out
+	pop dx cx
+	ret
+endp
+
+; expects bx -> buffer_out, di -> opc 'reg' on return cx -> bytes copied
+move_wreg_to_bx proc 
+	xor ch, ch
+	mov cl, OPC_REG_NAME_LEN - 1	
+
+	push ds es cx di si
+	inc di										; move to the beginning of the opcode
+	mov ax, ds									; es == ds
+	mov es, ax
+
+	mov ax, di
+	mov di, bx
+	mov si, ax
+	
+	rep movsb
+		
+	pop si di cx es ds
+	
+	add bx, cx
+	add [buffer_out_size], cl
+	ret
+endp 
+
 end start
