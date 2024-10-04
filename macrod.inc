@@ -7,7 +7,7 @@ OPC_REG_NAME_LEN = 03h
 OPC_REG_COUNT = 10h
 
 ;; input buffer
-BUFFER_IN_LEN = 255 ;; still something wrong with com files :(
+BUFFER_IN_LEN = 02 ;; still something wrong with com files :(
 
 ;; output buffer
 BUFFER_OUT_LEN = 20h

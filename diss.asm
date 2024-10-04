@@ -137,7 +137,6 @@ start:
 	;; make a tree later for now compare ok!!!
 	parse_buffer:
 		mov al, byte ptr [si]	; load the byte for comparision
-		dec [buffer_in_size]
 		
 		mov bl, al
 		shr bl, 4				; check if the call was Bxh
@@ -171,11 +170,10 @@ start:
 		call handle_1010
 		
 		_continue_loop:
-			inc si
-			inc ds:[current_address]
-	loop parse_buffer
+			call handle_buffer_in
+			
+	jmp parse_buffer
 	
-	jmp read_buffer_jmp
 
 	jmp exit
 	
@@ -343,7 +341,6 @@ mov_byte_hex_buffer_out proc
 	ret
 endp
 
-	
 ;; assumes word is in ax and pointer is in bx (NEEDS OPTIMIZATION)
 mov_word_hex_buffer_out proc
 	push ax												; save ax 
@@ -463,7 +460,6 @@ handle_1011 proc
 	call move_wreg_to_bx
 	
 	; add a comma and space
-
 	COMMA_BUFFER_OUT
 	WHITE_SPACE_BUFFER_OUT
 	
@@ -473,18 +469,16 @@ handle_1011 proc
 	
 	mov di, 1										; di is the endian flag now
 	
-	inc [current_address]
+	;inc [current_address]
 	call handle_buffer_in						; check if we ran out of buffer_in
 
 	mov al, byte ptr[si]						; print the next bytes value 
 	call mov_byte_hex_buffer_out
 
 	
-	_skip_one_mov_imm:
-		inc [current_address]		
+	_skip_one_mov_imm:		
 		call handle_buffer_in
 	
-		dec [buffer_in_size]	
 		mov al, byte ptr[si]					; SHOULD BE -1 to account for big endian
 		call mov_byte_hex_buffer_out
 	
@@ -553,7 +547,6 @@ handle_1000_11x0 proc
 	
 	; move to the next byte 
 	call handle_buffer_in
-	
 	
 	NEW_LINE_BUFFER_OUT
 	call handle_buffer_out

@@ -1,13 +1,14 @@
 ; checks if we ran out of reading buffer
 handle_buffer_in proc
+	inc [current_address]
 	inc si
+	dec [buffer_in_size]
 	cmp byte ptr ds:[buffer_in_size], 0				; check if we ran out of buffer
 	ja _handle_buffer_in_return						; if buffer_size != 0, we cant continue printing 
 	
 	call read_buffer								; read more buffer
 	
 	_handle_buffer_in_return:
-	dec [buffer_in_size]
 	ret 
 endp
 
@@ -22,7 +23,6 @@ handle_buffer_out proc
 	pop cx bx ax
 		; prepare the buffer_out for the next iter
 		mov [buffer_out_size], 0
-		
 	ret
 endp
 
