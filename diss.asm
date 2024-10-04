@@ -538,6 +538,15 @@ endp
 handle_1000_11x0 proc
 	push cx
 	
+	; move "mov" to buffer_out
+	push di cx
+	lea di, mov_str
+	mov cx, mov_str_len
+	call move_command_to_bffr
+	pop cx di
+	
+	WHITE_SPACE_BUFFER_OUT
+	
 	; extract the direction byte from al
 	push ax
 	and al, 02h
@@ -547,7 +556,23 @@ handle_1000_11x0 proc
 	
 	; move to the next byte 
 	call handle_buffer_in
+	mov al, byte ptr [si]				; load the next byte
 	
+	; fill _mod
+	push ax
+	shr al, 6
+	mov byte ptr [_mod], al
+	pop ax
+	
+	cmp byte ptr [_d], 0
+	jne handle_1000_11x0_d1
+	
+	
+	
+	jmp handle_1000_11x0_exit
+	handle_1000_11x0_d1:
+	
+	handle_1000_11x0_exit:
 	NEW_LINE_BUFFER_OUT
 	call handle_buffer_out
 	pop cx
@@ -592,7 +617,6 @@ handle_1000_10 proc
 	
 	; handle direction flag when mod is 00, 01, 10
 	push [_mod]
-	;mov byte ptr [_mod], 03h
 	
 	;; if _d == 0 mem/reg -> reg so we can leave the _mod, and load the second reg/mem into al
 	cmp [_d], 0
