@@ -343,7 +343,7 @@ endp
 	
 ;; assumes word is in ax and pointer is in bx (NEEDS OPTIMIZATION)
 mov_word_hex_buffer_out proc
-	push ax													; save ax 
+	push ax												; save ax 
 
 	; print ah
 	shr ax, 8
@@ -503,22 +503,8 @@ endp
 
 ; assumes the byte is in al
 handle_1000 proc
-	mov bl, al
-	and bl, 0Ch
+	push dx
 	
-	cmp bl, 0Ah
-	
-	_handle_1000_10_jmp:
-	call handle_1000_10
-	
-	_handle_1000_ret:
-	
-	ret
-endp 
-
-; handles mov reg <-> mem/reg
-handle_1000_10 proc
-	push cx dx
 	lea bx, buffer_out
 	
 	; mov current address into buffer out
@@ -526,6 +512,24 @@ handle_1000_10 proc
 	call mov_word_hex_buffer_out
 	COLON_BUFFER_OUT
 	WHITE_SPACE_BUFFER_OUT
+	
+	mov dl, al
+	and dl, 0Ch
+	
+	cmp dl, 0Ah
+	
+	_handle_1000_10_jmp:
+	call handle_1000_10
+	
+	_handle_1000_ret:
+	
+	pop dx
+	ret
+endp 
+
+; handles mov reg <-> mem/reg
+handle_1000_10 proc
+	push cx dx
 	
 	; move "mov" to buffer_out
 	push di cx
@@ -824,45 +828,47 @@ endp
 
 ; assumes the byte is in al
 handle_1010 proc
-	push bx
-	mov bl, al					; save ax for now
+	push dx
+	mov dl, al					; save ax for now
 	
+	; load the adress
+	lea bx, buffer_out
+	
+	push ax dx
+	; mov current address into buffer out
+	mov ax, [current_address]
+	call mov_word_hex_buffer_out
+	COLON_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+	
+	pop dx ax
 	; extract [_w]
-	shl bl, 7
-	shr bl, 7	
-	mov [_w], bl
+	and dl, 01h
+	mov [_w], dl
 	
 	; extract imaginary [_d]
-	mov bl, al 
-	and bl, 02h
-	shr bl, 1
-	mov [_d], bl
+	mov dl, al 
+	and dl, 02h
+	shr dl, 1
+	mov [_d], dl
 		
-	mov bl, al
-	and bl, 0Fh
-	shr bl, 2
+	mov dl, al
+	and dl, 0Fh
+	shr dl, 2
 	
-	cmp bl, 00h
+	cmp dl, 00h
 	je handle_1010_00_l
 
 	handle_1010_00_l:
 	call handle_1010_00
 
-	pop bx
+	pop dx
 	ret
 endp
 
 ; move ax <-> mem, assumes byte -> al, and bx -> buffer out, si -> buffer_in
 handle_1010_00 proc
 	push cx dx
-	; load buffer out to bx
-	lea bx, buffer_out
-	
-	; mov current address into buffer out
-	mov ax, [current_address]
-	call mov_word_hex_buffer_out
-	COLON_BUFFER_OUT
-	WHITE_SPACE_BUFFER_OUT
 
 	push di
 	lea di, mov_str
@@ -871,21 +877,23 @@ handle_1010_00 proc
 	pop di
 	
 	;; handle if [_d] == 0, mov ax, mem
-	cmp [_d], 0
+	cmp [_d], 00h
 	jne handle_1010_00_d1
 	
 	; check if al or ax was used
-	cmp [_w], 0
+	cmp [_w], 00h
 	jne handle_1010_00_d0w1
 	
 		; move 'al' to buffer_out
 		lea di, opcode_table_std_breg_nr
+		jmp handle_1010_00_mov_reg_1
 		
 	handle_1010_00_d0w1:
 		; move 'ax' to buffer_out
 		lea di, opcode_table_std_wreg_nr
 	
 	; move the register
+	handle_1010_00_mov_reg_1:
 	call move_wreg_to_bx
 	
 	; add a white space and a comma
@@ -932,16 +940,18 @@ handle_1010_00 proc
 		COMMA_BUFFER_OUT
 		WHITE_SPACE_BUFFER_OUT
 		
-		cmp [_w], 0
+		cmp [_w], 00h
 		jne handle_1010_00_d1w1
 	
 		; move 'al' to buffer_out
 		lea di, opcode_table_std_breg_nr
+		jmp handle_1010_00_mov_reg_2
 		
-		handle_1010_00_d1w1:
 		; move 'ax' to buffer_out
-		lea di, opcode_table_std_wreg_nr
+		handle_1010_00_d1w1:
+			lea di, opcode_table_std_wreg_nr
 	
+		handle_1010_00_mov_reg_2:
 		; move the register
 		call move_wreg_to_bx
 
