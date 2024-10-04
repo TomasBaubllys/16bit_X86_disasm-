@@ -1,5 +1,3 @@
-MAX_ARRAY_CAPACITY = 0100h
-
 CMD_ARG_LEN_PTR = 80h
 CMD_ARG_START_PTR = 81h
 
@@ -78,24 +76,3 @@ SQRBR_R_BUFFER_OUT macro
 	inc bx
 	inc [buffer_out_size]
 endm
-
-
-; assumes the number is in al prints ALWAYS prints two digits (only works for <100 integers)
-PRINT_DB_NUM macro
-    mov cl, 10
-    xor ah, ah
-    div cl                                          ; al - quotient, ah - remainder
-
-    mov bh, ah
-
-    mov dl, al
-    add dl, '0'
-    mov ah, 02h
-    int 21h
-
-    mov dl, bh
-    add dl, '0'
-    mov ah, 02h
-    int 21h 
-endm
-
