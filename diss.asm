@@ -553,6 +553,8 @@ handle_1000_11x0 proc
 	mov byte ptr [_d], al
 	pop ax
 	
+	mov byte ptr [_w], 01h				; in this case we only operate with words
+	
 	; move to the next byte 
 	call handle_buffer_in
 	mov al, byte ptr [si]				; load the next byte
