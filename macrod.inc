@@ -6,8 +6,10 @@ MAX_FILE_NAME_LEN = 0Ch			; read at most 13 bytes
 OPC_REG_NAME_LEN = 03h
 OPC_REG_COUNT = 10h
 
+OPC_SR_NAME_LEN = 03h
+
 ;; input buffer
-BUFFER_IN_LEN = 02 ;; still something wrong with com files :(
+BUFFER_IN_LEN = 255
 
 ;; output buffer
 BUFFER_OUT_LEN = 20h

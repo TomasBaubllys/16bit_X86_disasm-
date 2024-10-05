@@ -457,7 +457,8 @@ handle_1011 proc
 	pop di
 	
 	; move the registers name [ ax, ] to buffer_out 
-	call move_wreg_to_bx
+	mov cx, OPC_REG_NAME_LEN - 1
+	call move_cxdi_to_bx
 	
 	; add a comma and space
 	COMMA_BUFFER_OUT
@@ -545,8 +546,6 @@ handle_1000_11x0 proc
 	call move_command_to_bffr
 	pop cx di
 	
-	WHITE_SPACE_BUFFER_OUT
-	
 	; extract the direction byte from al
 	push ax
 	and al, 02h
@@ -564,13 +563,39 @@ handle_1000_11x0 proc
 	mov byte ptr [_mod], al
 	pop ax
 	
-	cmp byte ptr [_d], 0
+	cmp byte ptr [_d], 1				; 
 	jne handle_1000_11x0_d1
+	;; extract _sr
+	push ax
+	and al, 18h
+	shr al, 3
+
+	call mov_sr_to_bx
+	;; call to print _sr
 	
+	COMMA_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
 	
+	pop ax
+	and al, 07h
+	call move_regmem_to_bx
 	
 	jmp handle_1000_11x0_exit
 	handle_1000_11x0_d1:
+	
+	push ax 								; save al
+	; extract reg/mem
+	and al, 07h
+	call move_regmem_to_bx
+	
+	COMMA_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+	
+	; extract _sr
+	pop ax
+	and al, 18h
+	shr al, 3
+	call mov_sr_to_bx
 	
 	handle_1000_11x0_exit:
 	NEW_LINE_BUFFER_OUT
@@ -578,6 +603,24 @@ handle_1000_11x0 proc
 	pop cx
 	ret 
 endp
+
+; assumes sr is in al
+mov_sr_to_bx proc
+	lea di, ds:[opcode_table_sr]
+	mov_sr_to_bx_look_up:
+		cmp al, byte ptr [di]
+		je mov_sr_to_bx_load_op
+		
+		add di, OPC_SR_NAME_LEN
+		
+		jmp mov_sr_to_bx_look_up
+	
+	; once we find it load it to bx
+	mov_sr_to_bx_load_op:
+	mov cx, OPC_SR_NAME_LEN - 1
+	call move_cxdi_to_bx	
+	ret
+endp 
 
 ; handles mov reg <-> mem/reg
 handle_1000_10 proc
@@ -936,7 +979,9 @@ handle_1010_00 proc
 	
 	; move the register
 	handle_1010_00_mov_reg_1:
-	call move_wreg_to_bx
+	mov cx, OPC_REG_NAME_LEN - 1
+	call move_cxdi_to_bx
+	
 	
 	; add a white space and a comma
 	COMMA_BUFFER_OUT
@@ -987,7 +1032,8 @@ handle_1010_00 proc
 	
 		handle_1010_00_mov_reg_2:
 		; move the register
-		call move_wreg_to_bx
+		mov cx, OPC_REG_NAME_LEN - 1
+		call move_cxdi_to_bx
 
 
 	handle_1010_00_exit:
@@ -1000,9 +1046,9 @@ handle_1010_00 proc
 endp
 
 ; expects bx -> buffer_out, di -> opc 'reg' on return cx -> bytes copied
-move_wreg_to_bx proc 
-	xor ch, ch
-	mov cl, OPC_REG_NAME_LEN - 1	
+move_cxdi_to_bx proc 
+	;xor ch, ch
+	;mov cl, OPC_REG_NAME_LEN - 1	
 
 	push ds es cx di si
 	inc di										; move to the beginning of the opcode
