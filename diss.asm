@@ -63,6 +63,9 @@ JUMPS																		; for conditional long jumps
 	mov_str db "mov "
 	mov_str_len equ $ - mov_str
 	
+	unknown_str db 'unknown '
+	unknown_str_len equ $ - unknown_str
+	
 	opcode_0111 db 70h, 04h, 'jo '
 				db 71h, 05h, 'jno '
 				db 72h, 04h, 'jc '
@@ -152,6 +155,9 @@ start:
 		cmp bl, 0Ah
 		je handle_1010_l
 		
+		cmp bl, 0Ch
+		je handle_1100_l
+		
 		jmp _continue_loop
 		
 		handle_1011_l:
@@ -168,6 +174,10 @@ start:
 		
 		handle_1010_l:
 		call handle_1010
+		jmp _continue_loop
+		
+		handle_1100_l:
+		call handle_1100
 		
 		_continue_loop:
 			call handle_buffer_in
@@ -1047,6 +1057,57 @@ handle_1010_00 proc
 	ret
 endp
 
+; expects the byte in al
+handle_1100 proc
+	mov dl, al					; save ax for now
+	
+	; load the adress
+	lea bx, buffer_out
+	
+	push ax dx
+	; mov current address into buffer out
+	mov ax, [current_address]
+	call mov_word_hex_buffer_out
+	COLON_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+	pop dx ax
+	
+	mov dl, al
+	and dl, 0Eh
+	cmp dl, 06h
+	je handle_1100_011_l
+	
+	call handle_unknown
+	jmp handle_1100_ret
+	
+	handle_1100_011_l:
+	call handle_1100_011
+	jmp handle_1100_ret
+	
+	handle_1100_ret:
+	ret
+endp
+
+handle_1100_011 proc
+	; add 'mov' to the buffer
+	push di
+	lea di, mov_str
+	mov cx, mov_str_len
+	call move_command_to_bffr
+	pop di
+
+	; extract [_w]
+	mov dl, al
+	and dl, 01h
+	mov [_w], dl
+	
+	call handle_buffer_in 												; move to the next byte
+	
+	NEW_LINE_BUFFER_OUT	
+	call handle_buffer_out
+	ret
+endp
+
 ; expects bx -> buffer_out, di -> opc 'reg' on return cx -> bytes copied
 move_cxdi_to_bx proc 
 	;xor ch, ch
@@ -1069,5 +1130,16 @@ move_cxdi_to_bx proc
 	add [buffer_out_size], cl
 	ret
 endp 
+
+handle_unknown proc
+	push cx dx
+	lea di, unknown_str
+	mov cx, unknown_str_len
+	call move_command_to_bffr
+	NEW_LINE_BUFFER_OUT
+	call handle_buffer_out
+	pop dx cx
+	ret
+endp
 
 end start
