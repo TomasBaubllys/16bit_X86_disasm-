@@ -60,11 +60,14 @@ JUMPS																		; for conditional long jumps
 						db 0Eh, 'si'
 						db 0Fh, 'di'
 						
-	mov_str db "mov "
+	mov_str db 'mov '
 	mov_str_len equ $ - mov_str
 	
 	unknown_str db 'unknown '
 	unknown_str_len equ $ - unknown_str
+	
+	int_str db 'int '
+	int_str_len equ $ - int_str
 	
 	opcode_0111 db 70h, 04h, 'jo '
 				db 71h, 05h, 'jno '
@@ -1102,9 +1105,50 @@ handle_1100_011 proc
 	mov [_w], dl
 	
 	call handle_buffer_in 												; move to the next byte
+	mov al, byte ptr [si]
 	
+	; extract [_mod]
+	mov dl, al
+	shr dl, 6
+	mov byte ptr [_mod], dl
+	
+	; extract the r/m to al
+	and al, 07h
+	
+	; write r/m to buffer_out
+	call move_regmem_to_bx
+	
+	COMMA_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+	
+	call handle_bojb_bovb
+	
+	handle_1100_011_exit:
 	NEW_LINE_BUFFER_OUT	
 	call handle_buffer_out
+	ret
+endp
+
+; need [_w] to be set si -> buffer_in, bx -> buffer_out
+handle_bojb_bovb proc
+	cmp [_w], 0
+	je handle_bojb_bovb_skip
+	
+	call handle_buffer_in
+	mov al, byte ptr [si]
+	call mov_byte_hex_buffer_out
+	
+	handle_bojb_bovb_skip:
+	call handle_buffer_in
+	mov al, byte ptr [si]
+	call mov_byte_hex_buffer_out
+	
+	cmp [_w], 1
+	jne handle_bojb_bovb_exit
+
+	call swap_last_4_packs_2
+	
+	handle_bojb_bovb_exit:
 	ret
 endp
 
