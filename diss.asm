@@ -291,7 +291,6 @@ move_di_to_bx_scnd_byte proc
 	ret
 endp
 
-
 ; reads buffer into buffer, saves size in buffer_size, points si to the beginning of the buffer, cl - bytes read
 read_buffer proc
 	push bx ax
@@ -1080,6 +1079,13 @@ handle_1100 proc
 	cmp dl, 06h
 	je handle_1100_011_l
 	
+	; handle full xxxx bytes
+	mov dl, al
+	and dl, 0Fh
+	cmp dl, 0Dh
+	je handle_1100_1101_l
+	
+	; commands were not found
 	call handle_unknown
 	jmp handle_1100_ret
 	
@@ -1087,8 +1093,26 @@ handle_1100 proc
 	call handle_1100_011
 	jmp handle_1100_ret
 	
+	handle_1100_1101_l:
+	call handle_1100_1101
+	jmp handle_1100_ret
+	
 	handle_1100_ret:
 	ret
+endp
+
+handle_1100_1101 proc
+	lea di, int_str
+	mov cx, int_str_len
+	call move_command_to_bffr
+	
+	call handle_buffer_in
+	mov al, byte ptr [si]
+	call mov_byte_hex_buffer_out
+	
+	NEW_LINE_BUFFER_OUT
+	call handle_buffer_out
+	ret	
 endp
 
 handle_1100_011 proc
