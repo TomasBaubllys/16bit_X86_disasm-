@@ -476,30 +476,12 @@ handle_1011 proc
 	COMMA_BUFFER_OUT
 	WHITE_SPACE_BUFFER_OUT
 	
-	; add the next values to buffer_out
-	cmp byte ptr [di], 08h							; compare if its < B8h, not print the second byte
-	jb	_skip_one_mov_imm							
+	mov dl, byte ptr [di]
+	shr dl, 3
+	and dl, 01h
+	mov byte ptr [_w], dl
 	
-	mov di, 1										; di is the endian flag now
-	
-	;inc [current_address]
-	call handle_buffer_in						; check if we ran out of buffer_in
-
-	mov al, byte ptr[si]						; print the next bytes value 
-	call mov_byte_hex_buffer_out
-
-	
-	_skip_one_mov_imm:		
-		call handle_buffer_in
-	
-		mov al, byte ptr[si]					; SHOULD BE -1 to account for big endian
-		call mov_byte_hex_buffer_out
-	
-	
-	cmp di, 1
-	jne _handle_1011_flush
-	
-	call swap_last_4_packs_2
+	call handle_bojb_bovb
 	
 	_handle_1011_flush:
 	NEW_LINE_BUFFER_OUT
