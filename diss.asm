@@ -1206,7 +1206,6 @@ handle_unknown proc
 	ret
 endp
 
-;; IN PROGRESS
 ; assumes byte is in al
 handle_1111 proc
 	; load the adress
