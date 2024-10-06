@@ -101,6 +101,13 @@ JUMPS																		; for conditional long jumps
 					db 02h, 'ss'
 					db 03h, 'ds'
 	
+	opcode_1111_011 db 02h, 04h, 'not'
+					db 03h, 04h, 'neg'
+					db 04h, 04h, 'mul'
+					db 05h, 05h, 'imul'
+					db 06h, 04h, 'div'
+					db 07h, 05h, 'idiv'
+	
 	_bp_ db 00, 04h, '[bp' 
 				
 .code
@@ -161,6 +168,9 @@ start:
 		cmp bl, 0Ch
 		je handle_1100_l
 		
+		cmp bl, 0Fh
+		je handle_1111_l
+		
 		jmp _continue_loop
 		
 		handle_1011_l:
@@ -181,6 +191,10 @@ start:
 		
 		handle_1100_l:
 		call handle_1100
+		jmp _continue_loop
+		
+		handle_1111_l:
+		call handle_1111
 		
 		_continue_loop:
 			call handle_buffer_in
@@ -1189,6 +1203,88 @@ handle_unknown proc
 	NEW_LINE_BUFFER_OUT
 	call handle_buffer_out
 	pop dx cx
+	ret
+endp
+
+;; IN PROGRESS
+; assumes byte is in al
+handle_1111 proc
+	; load the adress
+	lea bx, buffer_out
+	
+	; mov current address into buffer out
+	push ax
+	mov ax, [current_address]
+	call mov_word_hex_buffer_out
+	COLON_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+	pop ax
+	
+	; extract [_w] will be usefull for half of the family functions
+	mov dl, al
+	and dl, 01h
+	mov [_w], dl
+	
+	; check if the command id was 011
+	mov dl, al
+	and dl, 0Eh
+	shr dl, 1
+
+	cmp dl, 03h
+	je handle_1111_011x_l
+	
+	call handle_unknown
+	jmp _handle_1111_exit
+	
+	handle_1111_011x_l:
+	call handle_1111_011x
+	jmp _handle_1111_exit
+	
+	_handle_1111_exit:
+	
+	ret
+endp
+
+; assumes the byte is in al
+handle_1111_011x proc
+	call handle_buffer_in
+	mov al, byte ptr [si]
+
+	; extract mod
+	mov dl, al
+	shr dl, 6
+	mov byte ptr [_mod], dl
+
+	; extract the look up bits and place them in al
+	mov dl, al
+	and dl, 38h
+	shr dl, 3
+	mov al, dl
+	
+	lea di, opcode_1111_011
+	handle_1111_011x_look_up:
+		cmp byte ptr [di], al
+		je handle_1111_011x_opc_found
+		
+		call move_di_scnd_byte
+		jmp handle_1111_011x_look_up
+	
+	handle_1111_011x_opc_found:
+	; move the current operation name to buffer_out
+	call move_di_to_bx_scnd_byte
+	
+	; add a white space
+	WHITE_SPACE_BUFFER_OUT
+	
+	; extract r/m
+	mov al, byte ptr [si]
+	and al, 07h
+	
+	; move handle r/m
+	call move_regmem_to_bx
+		
+	NEW_LINE_BUFFER_OUT
+	call handle_buffer_out
 	ret
 endp
 

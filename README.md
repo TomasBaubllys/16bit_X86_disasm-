@@ -1,4 +1,5 @@
 Instructions completed :
-1. mov(6)
-2. int (all except int 03h)
-3. conditionals jumps (all)
+> mov(6)
+> int (all except int 03h)
+> conditionals jumps (all)
+> not, net, mul, imul. div, idiv
