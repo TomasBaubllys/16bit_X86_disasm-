@@ -3,7 +3,6 @@
 - **MOV** (6 variants)
 - **INT** (all, except `int 03h`)
 - **Conditional Jumps** (all)
-- **NOT**, **NEG**, **MUL**, **IMUL**, **DIV**, **IDIV**
 - **Whole 1111 family starting from 010 (secondary byte)** :
   - `NOT`
   - `NEG`
