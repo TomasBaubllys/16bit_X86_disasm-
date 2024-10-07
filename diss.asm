@@ -16,12 +16,12 @@ include macrod.inc
 JUMPS																		; for conditional long jumps
 
 .data
-	output_file db 'rez.asm', '$', 0
+	output_file db 13 dup(?) ;'rez.asm', '$'
 	output_file_handle dw ?
 	
 	newln db 0Dh, 0Ah, '$'
 
-	file_name_read db MAX_FILE_NAME_LEN dup(?), 0							; file name from which we are going to read DTA 8.3 format 
+	file_name_read db MAX_FILE_NAME_LEN dup(?)							; file name from which we are going to read DTA 8.3 format 
 	file_handle dw ?
 	
 	cannot_open_file db "Error while openning file!"
@@ -36,6 +36,9 @@ JUMPS																		; for conditional long jumps
 	
 	buffer_out_size db ?
 	buffer_out db BUFFER_OUT_LEN dup(?)
+	
+	help_msg db 'Syntax diss [output_file] [input_file]'
+		help_msg_len equ $ - help_msg
 	
 	_d db ?
 	_w db ?
@@ -134,15 +137,25 @@ start:
 	; load the data segment
 	mov ax, @data
 	mov es, ax
+	
+	mov si, 81h														; load the beginning of cmd args
+	call skip_spaces												; skip spaces
 
-	; get the file name to read from
-	xor ch, ch
-	mov cl, ds:[CMD_ARG_LEN_PTR]									; get the command line arg length (later this will have to be improved)
-	lea di, es:[file_name_read]
-	lea si, ds:[CMD_ARG_START_PTR + 1]
+	mov al, byte ptr ds:[si]
+	cmp al, 13														; compare with a new line -> argc == 0
+	je help
+	
+	mov ax, word ptr ds:[si]
+	cmp ax, 3F2Fh													; compare with /?
+	je help
 
-	rep movsb														; move from source to dest, cl bytes
-	mov byte ptr es:[di - 1], 0										; move 0 to the end fhe file name for 3Dh instruction
+	lea di, es:[output_file]
+	call read_filename
+	cmp byte ptr es:[output_file], '$'								; if the files name was empty print help msg
+	je help 						
+	
+	lea di, file_name_read
+	call read_filename
 	
 	; move the data segment back to the ds
 	mov ax, es
@@ -241,6 +254,17 @@ start:
 
 	jmp exit
 	
+help:
+	mov ax, es
+	mov ds, ax
+	
+	lea dx, ds:[help_msg]
+	mov cx, help_msg_len
+	mov bx, 0002h					; stderr
+	mov ah, 40h
+	int 21h
+	jmp exit
+	
 print_eof:							; end of file reached
 	lea dx, eof_reached
 	mov ah, 09h
@@ -254,7 +278,7 @@ print_error:						; cannot open file
 	lea dx, cannot_open_file
 	mov ah, 40h
 	int 21h
-	jmp exit
+	jmp exit	
 	
 exit:
 	; close output file
@@ -269,6 +293,35 @@ exit:
 ;	======================
 ;		Functions area
 ;	======================
+
+skip_spaces proc
+	skip_spaces_loop:
+		cmp byte ptr ds:[si], ' '
+		jne skip_spaces_end
+		inc si
+		jmp skip_spaces_loop
+	skip_spaces_end:
+		ret
+endp
+
+read_filename proc
+	push	ax
+	call	skip_spaces
+	read_filename_start:
+		cmp	byte ptr ds:[si], 13	; jei nera parametru
+		je	read_filename_end	; tai taip, tai baigtas failo vedimas
+		cmp	byte ptr ds:[si], ' '	; jei tarpas
+		jne	read_filename_next	; tai praleisti visus tarpus, ir sokti prie kito parametro
+	read_filename_end:
+		mov	al, '$'			; irasyti '$' gale
+		stosb                           ; Store AL at address ES:(E)DI, di = di + 1
+		pop	ax
+		ret
+	read_filename_next:
+		lodsb							; uzkrauna kita simboli
+		stosb                           ; Store AL at address ES:(E)DI, di = di + 1
+		jmp read_filename_start
+endp
 
 ;; expects current byte in al
 handle_0111 proc
