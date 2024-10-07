@@ -116,7 +116,14 @@ JUMPS																		; for conditional long jumps
 					db 04h, 04h, 'jmp'
 					db 05h, 04h, 'jmp'
 					db 06h, 05h, 'push'
-	
+					
+	opcode_0100 db 00h, 04h, 'inc'
+				db 01h, 04h, 'dec'
+				
+				
+	opcode_0101 db 00h, 05h, 'push'
+				db 01h, 04h, 'pop'
+				
 	_bp_ db 00, 04h, '[bp' 
 				
 .code
@@ -180,6 +187,12 @@ start:
 		cmp bl, 0Fh
 		je handle_1111_l
 		
+		cmp bl, 04h
+		je handle_0100_l
+		
+		cmp bl, 05h 
+		je handle_0101_l
+		
 		jmp _continue_loop
 		
 		handle_1011_l:
@@ -200,6 +213,14 @@ start:
 		
 		handle_1100_l:
 		call handle_1100
+		jmp _continue_loop
+		
+		handle_0100_l:
+		call handle_0100
+		jmp _continue_loop
+		
+		handle_0101_l:
+		call handle_0101
 		jmp _continue_loop
 		
 		handle_1111_l:
@@ -1357,5 +1378,96 @@ handle_1111_111x proc
 	call handle_buffer_out
 	ret
 endp 
+
+; assumes the byte is in al
+handle_0100 proc
+	; print the current adress
+	lea bx, buffer_out
+	
+	; mov current address into buffer out
+	push ax
+	mov ax, [current_address]
+	call mov_word_hex_buffer_out
+	COLON_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+	pop ax
+
+	; extract the look_up byte
+	mov dl, al
+	and dl, 08h
+	shr dl, 3
+	
+	lea di, opcode_0100
+	push cx 
+	mov cx, OPC_0100_COUNT
+	
+	_handle_0100_look_up:
+	cmp dl, byte ptr [di]
+	je _handle_0100_opc_found
+	
+	call move_di_scnd_byte
+	
+	loop _handle_0100_look_up
+	
+	_handle_0100_opc_found:
+	call move_di_to_bx_scnd_byte
+	WHITE_SPACE_BUFFER_OUT
+	
+	pop cx
+	mov [_w], 1
+	
+	; extract the byte
+	and al, 07h
+	call mov_mod11_reg_to_bx
+	
+	NEW_LINE_BUFFER_OUT
+	call handle_buffer_out
+	ret 
+endp
+
+handle_0101 proc
+	; print the current adress
+	lea bx, buffer_out
+	
+	; mov current address into buffer out
+	push ax
+	mov ax, [current_address]
+	call mov_word_hex_buffer_out
+	COLON_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+	pop ax
+
+	; extract the look_up byte
+	mov dl, al
+	and dl, 08h
+	shr dl, 3
+	
+	lea di, opcode_0101
+	push cx 
+	mov cx, OPC_0101_COUNT
+	
+	_handle_0101_look_up:
+	cmp dl, byte ptr [di]
+	je _handle_0101_opc_found
+	
+	call move_di_scnd_byte
+	
+	loop _handle_0101_look_up
+	
+	_handle_0101_opc_found:
+	call move_di_to_bx_scnd_byte
+	WHITE_SPACE_BUFFER_OUT
+	
+	pop cx
+	mov [_w], 1
+	
+	; extract the byte
+	and al, 07h
+	call mov_mod11_reg_to_bx
+	
+	NEW_LINE_BUFFER_OUT
+	call handle_buffer_out
+	ret 
+endp
 
 end start
