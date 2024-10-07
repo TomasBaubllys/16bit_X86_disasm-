@@ -4,7 +4,7 @@
 - **INT** (all, except `int 03h`)
 - **Conditional Jumps** (all)
 - **NOT**, **NEG**, **MUL**, **IMUL**, **DIV**, **IDIV**
-- **Whole 1111 family* :
+- **Whole 1111 family** :
   - `NOT`
   - `NEG`
   - `MUL`
