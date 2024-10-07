@@ -1425,6 +1425,7 @@ handle_0100 proc
 	ret 
 endp
 
+; assumes the byte is in al
 handle_0101 proc
 	; print the current adress
 	lea bx, buffer_out
