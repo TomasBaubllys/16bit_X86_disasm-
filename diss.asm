@@ -3,8 +3,8 @@
 ; Atliko: Tomas Baublys 
 
 ;; TODO :
-;;	> Handle big endian
-;;	> Add hex printing 
+;;
+;;
 ;;	> Optimize opcode table
 
 
@@ -21,13 +21,13 @@ JUMPS																		; for conditional long jumps
 	
 	newln db 0Dh, 0Ah, '$'
 
-	file_name_read db MAX_FILE_NAME_LEN dup(?)							; file name from which we are going to read DTA 8.3 format 
-	file_handle dw ?
+	input_file db MAX_FILE_NAME_LEN dup(?)							; file name from which we are going to read DTA 8.3 format 
+	input_file_handle dw ?
 	
 	cannot_open_file db "Error while openning file!"
 					cof_err_len equ $ - cannot_open_file
 	
-	eof_reached db "End of file was reached!", '$'
+	eof_success db "Disassembly complete. End of file reached successfully.", '$'
 
 	buffer_in_size db ?
 	buffer_in db BUFFER_IN_LEN dup(?)
@@ -159,7 +159,7 @@ start:
 	cmp byte ptr es:[output_file], '$'								; if the files name was empty print help msg
 	je help 						
 	
-	lea di, file_name_read
+	lea di, input_file
 	call read_filename
 	
 	; move the data segment back to the ds
@@ -178,12 +178,12 @@ start:
 	; open the file
 	mov ah, 3Dh
 	mov al, 00h														; read only
-	lea dx, file_name_read
+	lea dx, input_file
 	int 21h
 	jc print_error
 	
 	; save the file hande
-	mov word ptr [file_handle], ax
+	mov word ptr [input_file_handle], ax
 	
 	read_buffer_jmp:
 		call read_buffer
@@ -270,8 +270,12 @@ help:
 	int 21h
 	jmp exit
 	
-print_eof:							; end of file reached
-	lea dx, eof_reached
+eof_reached:							; end of file reached
+	mov bx, [input_file_handle]			; close the input_file
+	mov ah, 3Eh			
+	int 21h	
+
+	lea dx, eof_success
 	mov ah, 09h
 	int 21h
 	jmp exit
@@ -313,17 +317,17 @@ read_filename proc
 	push	ax
 	call	skip_spaces
 	read_filename_start:
-		cmp	byte ptr ds:[si], 13	; jei nera parametru
-		je	read_filename_end	; tai taip, tai baigtas failo vedimas
-		cmp	byte ptr ds:[si], ' '	; jei tarpas
-		jne	read_filename_next	; tai praleisti visus tarpus, ir sokti prie kito parametro
+		cmp	byte ptr ds:[si], 13		; compare with a new line
+		je	read_filename_end			; if yes we are done
+		cmp	byte ptr ds:[si], ' '		; if not white spaces, continue reading
+		jne	read_filename_next			
 	read_filename_end:
-		mov	al, '$'			; irasyti '$' gale
+		mov	al, '$'						; write $ to the end
 		stosb                           ; Store AL at address ES:(E)DI, di = di + 1
 		pop	ax
 		ret
 	read_filename_next:
-		lodsb							; uzkrauna kita simboli
+		lodsb							; mov ds:si -> al
 		stosb                           ; Store AL at address ES:(E)DI, di = di + 1
 		jmp read_filename_start
 endp
@@ -411,7 +415,7 @@ endp
 ; reads buffer into buffer, saves size in buffer_size, points si to the beginning of the buffer, cl - bytes read
 read_buffer proc
 	push bx ax
-	mov bx, [file_handle]
+	mov bx, [input_file_handle]
 	xor cx, cx
 	mov cx, BUFFER_IN_LEN
 	lea dx, buffer_in
@@ -419,7 +423,7 @@ read_buffer proc
 	int 21h
 	
 	cmp ax, 0
-	je print_eof				; only exit from this 
+	je eof_reached				; only exit from this 
 	
 	mov [buffer_in_size], al		; save buffer size
 	
@@ -1252,7 +1256,7 @@ handle_1100_011 proc
 	ret
 endp
 
-; need [_w] to be set si -> buffer_in, bx -> buffer_out
+; needs [_w] to be set si -> buffer_in, bx -> buffer_out
 handle_bojb_bovb proc
 	cmp [_w], 0
 	je handle_bojb_bovb_skip
