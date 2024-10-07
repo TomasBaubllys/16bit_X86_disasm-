@@ -109,7 +109,8 @@ JUMPS																		; for conditional long jumps
 					db 02h, 'ss'
 					db 03h, 'ds'
 	
-	opcode_1111_011 db 02h, 04h, 'not'
+	opcode_1111_011 db 00h, 05h, 'test'
+					db 02h, 04h, 'not'
 					db 03h, 04h, 'neg'
 					db 04h, 04h, 'mul'
 					db 05h, 05h, 'imul'
@@ -1412,6 +1413,9 @@ handle_1111_011x proc
 	shr dl, 3
 	mov al, dl
 	
+	; save ax for later
+	push ax
+	
 	lea di, opcode_1111_011
 	push cx
 	mov cx, OPC_1111_011_COUNT
@@ -1436,7 +1440,18 @@ handle_1111_011x proc
 	
 	; move handle r/m
 	call move_regmem_to_bx
+	
+	; check if the call was TEST
+	pop ax
+	cmp al, 00h
+	jne _handle_1111_011x_exit
+	
+	COMMA_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+	
+	call handle_bojb_bovb
 		
+	_handle_1111_011x_exit:
 	NEW_LINE_BUFFER_OUT
 	call handle_buffer_out
 	ret
