@@ -107,6 +107,15 @@ JUMPS																		; for conditional long jumps
 					db 05h, 05h, 'imul'
 					db 06h, 04h, 'div'
 					db 07h, 05h, 'idiv'
+					
+					
+	opcode_1111_111 db 00h, 04h, 'inc'
+					db 01h, 04h, 'dec'
+					db 02h, 05h, 'call'
+					db 03h, 05h, 'call'
+					db 04h, 04h, 'jmp'
+					db 05h, 04h, 'jmp'
+					db 06h, 05h, 'push'
 	
 	_bp_ db 00, 04h, '[bp' 
 				
@@ -234,9 +243,11 @@ handle_0111 proc
 	
 	; find the coresponding conditional jump
 	lea di, ds:[opcode_0111]
+	push cx
+	mov cx, OPC_0111_COUNT
 	_handle_0111_look_up:
 		cmp byte ptr [di], al
-		je _handle_0111_continue
+		loop _handle_0111_continue
 		
 		call move_di_scnd_byte
 		
@@ -244,6 +255,7 @@ handle_0111 proc
 	
 	; opcode found
 	_handle_0111_continue:
+	pop cx
 	lea bx, buffer_out
 	mov ax, [current_address]
 	
@@ -1230,13 +1242,20 @@ handle_1111 proc
 	shr dl, 1
 
 	cmp dl, 03h
-	je handle_1111_011x_l
+	je _handle_1111_011x_l
+	
+	cmp dl, 07h
+	je _handle_1111_111x_l
 	
 	call handle_unknown
 	jmp _handle_1111_exit
 	
-	handle_1111_011x_l:
+	_handle_1111_011x_l:
 	call handle_1111_011x
+	jmp _handle_1111_exit
+	
+	_handle_1111_111x_l:
+	call handle_1111_111x
 	jmp _handle_1111_exit
 	
 	_handle_1111_exit:
@@ -1244,7 +1263,7 @@ handle_1111 proc
 	ret
 endp
 
-; assumes the byte is in al
+; assumes the byte is in al, bx -> buffer_out, _w is set
 handle_1111_011x proc
 	call handle_buffer_in
 	mov al, byte ptr [si]
@@ -1261,14 +1280,17 @@ handle_1111_011x proc
 	mov al, dl
 	
 	lea di, opcode_1111_011
+	push cx
+	mov cx, OPC_1111_011_COUNT
 	handle_1111_011x_look_up:
 		cmp byte ptr [di], al
 		je handle_1111_011x_opc_found
 		
 		call move_di_scnd_byte
-		jmp handle_1111_011x_look_up
+		loop handle_1111_011x_look_up
 	
 	handle_1111_011x_opc_found:
+	pop cx
 	; move the current operation name to buffer_out
 	call move_di_to_bx_scnd_byte
 	
@@ -1286,5 +1308,54 @@ handle_1111_011x proc
 	call handle_buffer_out
 	ret
 endp
+
+; assumes the byte is in al, bx 
+handle_1111_111x proc
+	call handle_buffer_in
+	mov al, byte ptr [si]
+	
+	; extract mod
+	mov dl, al
+	shr dl, 6
+	mov byte ptr [_mod], dl
+	
+	; look up bits
+	mov dl, al
+	and dl, 38h
+	shr dl, 3
+	
+	; load the look up table to di
+	lea di, opcode_1111_111
+	
+	push cx
+	mov cx, OPC_1111_111_COUNT
+
+	; start the search
+	_handle_1111_111x_look_up:
+		cmp dl, byte ptr [di]
+		je _handle_1111_111x_opc_found
+		
+		call move_di_scnd_byte
+	
+		loop _handle_1111_111x_look_up
+		
+	; add the command name to buffer_out
+	_handle_1111_111x_opc_found:
+	pop cx
+	call move_di_to_bx_scnd_byte
+	
+	WHITE_SPACE_BUFFER_OUT
+	
+	; extract r/m
+	mov al, byte ptr [si]
+	and al, 07h
+	
+	; move handle r/m
+	call move_regmem_to_bx
+	
+	NEW_LINE_BUFFER_OUT
+	call handle_buffer_out
+	ret
+endp 
 
 end start
