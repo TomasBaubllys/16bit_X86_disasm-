@@ -131,6 +131,13 @@ JUMPS																		; for conditional long jumps
 	opcode_0101 db 00h, 05h, 'push'
 				db 01h, 04h, 'pop'
 				
+	opcode_1111_1000_to_1101 db 08h, 04h, 'clc'
+							 db 09h, 04h, 'stc'
+							 db 0Ah, 04h, 'cli'
+							 db 0Bh, 04h, 'sti'
+							 db 0Ch, 04h, 'cld'
+							 db 0Dh, 04h, 'std'
+ 				
 	_bp_ db 00, 04h, '[bp' 
 				
 .code
@@ -1342,7 +1349,7 @@ handle_1111 proc
 	cmp dl, 07h
 	je _handle_1111_111x_l
 	
-	call handle_unknown
+	call handle_1111_1000_to_1101
 	jmp _handle_1111_exit
 	
 	_handle_1111_011x_l:
@@ -1355,6 +1362,31 @@ handle_1111 proc
 	
 	_handle_1111_exit:
 	
+	ret
+endp
+
+; assumes the byte is in al, bx -> buffer_out
+handle_1111_1000_to_1101 proc
+	mov al, byte ptr [si]
+	and al, 0Fh
+
+	lea di, opcode_1111_1000_to_1101
+	push cx
+	mov cx, OPC_1111_1000_TO_1101_COUNT
+	handle_1111_1000_to_1101_look_up:
+		cmp byte ptr [di], al
+		je handle_1111_1000_to_1101_opc_found
+		
+		call move_di_scnd_byte
+		loop handle_1111_1000_to_1101_look_up
+
+	handle_1111_1000_to_1101_opc_found:
+	call move_di_to_bx_scnd_byte
+
+	NEW_LINE_BUFFER_OUT
+	call handle_buffer_out	
+		
+	pop cx
 	ret
 endp
 

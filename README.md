@@ -4,7 +4,18 @@
 - **INT** (all, except `int 03h`)
 - **Conditional Jumps** (all)
 - **NOT**, **NEG**, **MUL**, **IMUL**, **DIV**, **IDIV**
-- **(r/m) Instructions** (1111 family):
+- **Whole 1111 family* :
+  - `NOT`
+  - `NEG`
+  - `MUL`
+  - `IMUL`
+  - `DIV`
+  - `IDIV`
+  - `CLC`
+  - `STC`
+  - `STI`
+  - `CLD`
+  - `STD`
   - `INC`
   - `DEC`
   - `CALL`
