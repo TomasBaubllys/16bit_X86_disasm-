@@ -16,7 +16,7 @@ endp
 handle_buffer_out proc
 	push ax bx cx
 		mov cl, [buffer_out_size]
-		mov bx, 0001h
+		mov bx, [output_file_handle] ; 0001h
 		lea dx, buffer_out
 		mov ah, 40h
 		int 21h

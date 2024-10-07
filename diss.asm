@@ -3,13 +3,9 @@
 ; Atliko: Tomas Baublys 
 
 ;; TODO :
-;;	> Accumulate output in buffer (V)
-;;	> Flush out the buffer at once (V)
 ;;	> Handle big endian
 ;;	> Add hex printing 
-;;	> handle buffer flush (V)
 ;;	> Optimize opcode table
-;;	> Get rid of buffer_out_iter since we using bx
 
 
 .model small
@@ -20,6 +16,9 @@ include macrod.inc
 JUMPS																		; for conditional long jumps
 
 .data
+	output_file db 'rez.asm', '$', 0
+	output_file_handle dw ?
+	
 	newln db 0Dh, 0Ah, '$'
 
 	file_name_read db MAX_FILE_NAME_LEN dup(?), 0							; file name from which we are going to read DTA 8.3 format 
@@ -130,7 +129,6 @@ JUMPS																		; for conditional long jumps
 include printh.inc
 include hbyte.inc
 include bffrio.inc
-;include h1011.inc
 
 start:
 	; load the data segment
@@ -149,6 +147,15 @@ start:
 	; move the data segment back to the ds
 	mov ax, es
 	mov ds, ax
+	
+	; open file name
+	lea dx,  ds:[output_file]
+	mov ax, 3C00h
+	mov cx, 00h
+	int 21h
+	jc print_error
+	mov ds:[output_file_handle], ax
+
 
 	; open the file
 	mov ah, 3Dh
@@ -250,6 +257,11 @@ print_error:						; cannot open file
 	jmp exit
 	
 exit:
+	; close output file
+	mov bx, [output_file_handle]
+	mov ah, 3Eh
+	int 21h
+
     ; Exit to DOS
     mov ax, 4C00h
     INT 21h
