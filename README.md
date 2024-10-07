@@ -3,7 +3,12 @@
 - **MOV** (6 variants)
 - **INT** (all, except `int 03h`)
 - **Conditional Jumps** (all)
-- **Whole 1111 family starting from 010 (secondary byte)** :
+- **1111 family except TEST** :
+  - `LOCK`
+  - `REPNZ/REPNE`
+  - `REP/REPZ/REPE`
+  - `HLT`
+  - `CMC`
   - `NOT`
   - `NEG`
   - `MUL`
