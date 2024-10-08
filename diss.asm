@@ -26,8 +26,11 @@ JUMPS																		; for conditional long jumps
 	input_file db MAX_FILE_NAME_LEN dup(?)							; file name from which we are going to read DTA 8.3 format 
 	input_file_handle dw ?
 	
-	cannot_open_file db "Error while openning file!"
+	cannot_open_file db "Error while openning source file!"
 					cof_err_len equ $ - cannot_open_file
+					
+	cannot_create_file db "Error while creating/truncating destination file!"
+					ccf_err_len equ $ - cannot_create_file
 	
 	eof_success db "Disassembly complete. End of file reached successfully."
 		eof_success_len equ $ - eof_success
@@ -208,7 +211,7 @@ start:
 	mov ax, 3C00h
 	mov cx, 00h
 	int 21h
-	jc print_error
+	jc cannot_open_dest_file_err
 	mov ds:[output_file_handle], ax
 
 
@@ -217,7 +220,7 @@ start:
 	mov al, 00h														; read only
 	lea dx, input_file
 	int 21h
-	jc print_error
+	jc cannot_open_src_file_err
 	
 	; save the file hande
 	mov word ptr [input_file_handle], ax
@@ -314,11 +317,7 @@ help:
 	int 21h
 	jmp exit
 	
-eof_reached:							; end of file reached
-	mov bx, [input_file_handle]			; close the input_file
-	mov ah, 3Eh			
-	int 21h	
-	
+eof_reached:		
 	; get cursor position dl contains collumn
 	mov ah, 03h
 	mov bh, 0
@@ -343,29 +342,82 @@ eof_reached:							; end of file reached
 		pop cx
 		loop _eof_reached_loop
 	
-	;lea dx, eof_success
-	;mov ah, 09h
-	;int 21h
 	jmp exit
 	
-print_error:						; cannot open file
-	mov bl, 2
-	xor ch, ch
-	mov cl, cof_err_len
-	lea dx, cannot_open_file
-	mov ah, 40h
+cannot_open_src_file_err:	
+	; close output file
+	mov bx, [output_file_handle]
+	mov ah, 3Eh
 	int 21h
-	jmp exit	
+	
+	; get cursor position dl contains collumn
+	mov ah, 03h
+	mov bh, 0
+	int 10h
+	
+	lea si, cannot_open_file
+	; add color green cuz why not
+	mov cx, cof_err_len
+	_cannot_open_src_file_err_loop:
+		push cx
+		lodsb							; load from si one byte to al, ++si
+		mov cx, 01h
+		mov bl, 0Ch						; color - red or use 04h
+		mov ah, 09h
+		int 10h
+		
+		; update the cursor
+		inc dl
+		mov ah, 02h
+		int 10h
+		
+		pop cx
+		loop _cannot_open_src_file_err_loop
+	
+	jmp exit_to_dos	
+	
+cannot_open_dest_file_err:						; cannot open file
+	; get cursor position dl contains collumn
+	mov ah, 03h
+	mov bh, 0
+	int 10h
+	
+	lea si, cannot_create_file
+	; add color green cuz why not
+	mov cx, ccf_err_len
+	_cannot_open_dest_file_err_loop:
+		push cx
+		lodsb							; load from si one byte to al, ++si
+		mov cx, 01h
+		mov bl, 0Ch						; color - red or use 04h
+		mov ah, 09h
+		int 10h
+		
+		; update the cursor
+		inc dl
+		mov ah, 02h
+		int 10h
+		
+		pop cx
+		loop _cannot_open_dest_file_err_loop
+	
+	jmp exit_to_dos	
 	
 exit:
 	; close output file
 	mov bx, [output_file_handle]
 	mov ah, 3Eh
 	int 21h
+	
+	; close input file
+	mov bx, [input_file_handle]
+	mov ah, 3Eh
+	int 21h
 
+exit_to_dos:
     ; Exit to DOS
     mov ax, 4C00h
-    INT 21h
+    int 21h
 	
 ;	======================
 ;		Functions area
