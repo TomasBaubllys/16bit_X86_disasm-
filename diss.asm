@@ -144,6 +144,17 @@ JUMPS																		; for conditional long jumps
 										  db 0Bh, 04h, 'sti'
 										  db 0Ch, 04h, 'cld'
 										  db 0Dh, 04h, 'std'
+										  
+	opcode_1001 db 00h, 04h, 'nop'
+				db 08h, 04h, 'cbw'
+				db 09h, 04h, 'cwd'
+				db 0Ah, 05h, 'call'
+				db 0Bh, 05h, 'wait'
+				db 0Ch, 06h, 'pushf'
+				db 0Dh, 05h, 'popf'
+				db 0Eh, 05h, 'sahf'
+				db 0Fh, 05h, 'lahf'
+		  _xchg db 00h, 05h, 'xchg'				; if the it loop through all elements di will be placed here
  				
 	_bp_ db 00, 04h, '[bp' 
 				
@@ -232,6 +243,9 @@ start:
 		cmp bl, 05h 
 		je handle_0101_l
 		
+		cmp bl, 09h
+		je handle_1001_l
+		
 		jmp _continue_loop
 		
 		handle_1011_l:
@@ -264,6 +278,10 @@ start:
 		
 		handle_1111_l:
 		call handle_1111
+		jmp _continue_loop
+		
+		handle_1001_l:
+		call handle_1001
 		
 		_continue_loop:
 			call handle_buffer_in
@@ -1293,6 +1311,18 @@ handle_bojb_bovb proc
 	ret
 endp
 
+handle_xjb_xvb proc
+	call handle_buffer_in
+	mov al, byte ptr [si]
+	call mov_byte_hex_buffer_out
+	
+	call handle_buffer_in
+	mov ah, byte ptr [si]
+	call mov_word_hex_buffer_out
+	
+	ret
+endp
+
 ; expects bx -> buffer_out, di -> opc 'reg' on return cx -> bytes copied
 move_cxdi_to_bx proc 
 	;xor ch, ch
@@ -1596,6 +1626,74 @@ handle_0101 proc
 	NEW_LINE_BUFFER_OUT
 	call handle_buffer_out
 	ret 
+endp
+
+; assumes the byte is in al
+handle_1001 proc
+	lea bx, buffer_out
+	
+	; mov current address into buffer out
+	push ax dx
+	mov ax, [current_address]
+	call mov_word_hex_buffer_out
+	COLON_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+	pop dx ax
+	
+	and al, 0Fh
+	
+	push cx
+	lea di, opcode_1001
+	mov cx, OPC_1001_COUNT
+	handle_1001_look_up:
+		cmp byte ptr [di], al
+		je handle_1001_opc_found
+		
+		call move_di_scnd_byte
+		
+	loop handle_1001_look_up
+	handle_1001_opc_found:
+	call move_di_to_bx_scnd_byte
+	
+	cmp byte ptr [bx - 1], 'g'
+	je handle_1001_xchg
+	
+	; check for 1001 1010 (call)
+	cmp al, 0Ah
+	jne handle_1001_exit
+	WHITE_SPACE_BUFFER_OUT
+	
+	; handle ajb avb
+	call handle_xjb_xvb
+	
+	WHITE_SPACE_BUFFER_OUT
+	; handle srjb srvb 
+	call handle_xjb_xvb
+	
+	handle_1001_exit:
+	
+	pop cx
+	NEW_LINE_BUFFER_OUT
+	call handle_buffer_out
+	ret
+	
+	handle_1001_xchg:
+		WHITE_SPACE_BUFFER_OUT
+		mov al, byte ptr [si]
+		and al, 07h
+		mov [_w], 1
+		
+		; move the first register to buffer_out
+		call mov_mod11_reg_to_bx 
+		
+		COMMA_BUFFER_OUT
+		WHITE_SPACE_BUFFER_OUT
+		
+		; move ax to buffer out
+		mov al, 00h
+		call mov_mod11_reg_to_bx
+		jmp handle_1001_exit
+	
 endp
 
 end start

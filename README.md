@@ -26,8 +26,18 @@
   - `CALL`
   - `JMP`
   - `PUSH`
-- **Word Registers**:
+- **0100 family**:
   - `INC`
   - `DEC`
   - `PUSH`
   - `POP`
+- **1001 family**
+  - `NOP`
+  - `XCHG`
+  - `CBW`
+  - `CALL`
+  - `WAIT`
+  - `PUSHF`
+  - `POPF`
+  - `SAHF`
+  - `LAHF`
