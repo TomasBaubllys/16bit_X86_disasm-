@@ -83,22 +83,22 @@ JUMPS																		; for conditional long jumps
 	int_str db 'int '
 	int_str_len equ $ - int_str
 	
-	opcode_0111 db 70h, 04h, 'jo '
-				db 71h, 05h, 'jno '
-				db 72h, 04h, 'jc '
-				db 73h, 05h, 'jae '
-				db 74h, 04h, 'je '
-				db 75h,	05h, 'jne '
-				db 76h, 05h, 'jbe '
-				db 77h, 04h, 'ja '
-				db 78h, 05h, 'js '
-				db 79h, 05h, 'jns '
-				db 7Ah, 04h, 'jp '
-				db 7Bh, 05h, 'jnp '
-				db 7Ch, 04h, 'jl '
-				db 7Dh, 05h, 'jge '
-				db 7Eh, 05h, 'jle '
-				db 7Fh, 04h, 'jg '
+	opcode_0111 db 00h, 04h, 'jo '
+				db 01h, 05h, 'jno '
+				db 02h, 04h, 'jc '
+				db 03h, 05h, 'jae '
+				db 04h, 04h, 'je '
+				db 05h,	05h, 'jne '
+				db 06h, 05h, 'jbe '
+				db 07h, 04h, 'ja '
+				db 08h, 04h, 'js '
+				db 09h, 05h, 'jns '
+				db 0Ah, 04h, 'jp '
+				db 0Bh, 05h, 'jnp '
+				db 0Ch, 04h, 'jl '
+				db 0Dh, 05h, 'jge '
+				db 0Eh, 05h, 'jle '
+				db 0Fh, 04h, 'jg '
 				
 	opcode_table_reg_mod00 db 00h, 09h, '[bx + si'
 							   db 01h, 09h, '[bx + di'
@@ -452,17 +452,44 @@ read_filename proc
 		jmp read_filename_start
 endp
 
+get_mod proc
+	push ax
+	shr al, 6
+	mov byte ptr [_mod], al
+	pop ax
+	ret
+endp
+
+get_d proc
+	push ax
+	and al, 02h
+	shr al, 1
+	mov byte ptr [_d], al
+	pop ax
+	ret
+endp
+
+get_w proc
+	push ax
+	and al, 01h
+	mov byte ptr [_w], al
+	pop ax
+	ret
+endp
+
 ;; expects current byte in al
 handle_0111 proc
 	push cx ax bx
 	
 	; find the coresponding conditional jump
-	lea di, ds:[opcode_0111]
+	and al, 0Fh
+	
+	lea di, opcode_0111
 	push cx
 	mov cx, OPC_0111_COUNT
 	_handle_0111_look_up:
 		cmp byte ptr [di], al
-		loop _handle_0111_continue
+		je _handle_0111_continue
 		
 		call move_di_scnd_byte
 		
@@ -471,6 +498,7 @@ handle_0111 proc
 	; opcode found
 	_handle_0111_continue:
 	pop cx
+	push di
 	lea bx, buffer_out
 	mov ax, [current_address]
 	
@@ -479,9 +507,10 @@ handle_0111 proc
 	COLON_BUFFER_OUT								; sourceeeeee
 	WHITE_SPACE_BUFFER_OUT
 	
+	pop di
 	call move_di_to_bx_scnd_byte					; copy conditional jump call to buffer
 	
-	call handle_buffer_in						; check if we ran out of buffer_in
+	call handle_buffer_in							; check if we ran out of buffer_in
 	
 	mov al, byte ptr [si]	
 	call mov_byte_hex_buffer_out					; move the jump address to the buffer
@@ -875,12 +904,8 @@ handle_1000_11x0 proc
 	call move_command_to_bffr
 	pop cx di
 	
-	; extract the direction byte from al
-	push ax
-	and al, 02h
-	shr al, 1
-	mov byte ptr [_d], al
-	pop ax
+	; extract the direction byte from al	
+	call get_d
 	
 	mov byte ptr [_w], 01h				; in this case we only operate with words
 	
@@ -889,10 +914,7 @@ handle_1000_11x0 proc
 	mov al, byte ptr [si]				; load the next byte
 	
 	; fill _mod
-	push ax
-	shr al, 6
-	mov byte ptr [_mod], al
-	pop ax
+	call get_mod
 	
 	cmp byte ptr [_d], 1				; 
 	jne handle_1000_11x0_d1
@@ -965,25 +987,22 @@ handle_1000_10 proc
 	pop cx di
 
 	; fill out the values _d, _w, _mod
-	mov al, byte ptr [si]
+
+	; get _d
+	call get_d
 	
-	mov cl, al
-	and al, 02h
-	shr al, 1
-	mov byte ptr [_d], al
-	
-	mov al, cl
-	and al, 01h
-	mov byte ptr [_w], al
+	; get _w
+	call get_w
 	
 	; move to the next byte
 	call handle_buffer_in
+	mov al, byte ptr[si]
+	
+	; save al for later use
+	mov cl, al
 	
 	; get mod
-	mov al, byte ptr [si]
-	mov cl, al
-	shr al, 6
-	mov byte ptr [_mod], al
+	call get_mod
 	
 	; one case if mod == 11 we dont need diection flag
 	cmp [_mod], 03h
@@ -994,8 +1013,7 @@ handle_1000_10 proc
 	
 	;; if _d == 0 mem/reg -> reg so we can leave the _mod, and load the second reg/mem into al
 	cmp [_d], 0
-	jne handle_1000_10_skip_swap_1
-	mov al, cl
+	jne handle_1000_10_skip_swap_1																				
 	and al, 07h
 	
 	handle_1000_10_skip_swap_1:
@@ -1258,9 +1276,9 @@ handle_1010 proc
 	WHITE_SPACE_BUFFER_OUT
 	
 	pop dx ax
+	
 	; extract [_w]
-	and dl, 01h
-	mov [_w], dl
+	call get_w
 	
 	; extract imaginary [_d]
 	mov dl, al 
@@ -1441,17 +1459,13 @@ handle_1100_011 proc
 	pop di
 
 	; extract [_w]
-	mov dl, al
-	and dl, 01h
-	mov [_w], dl
+	call get_w
 	
 	call handle_buffer_in 												; move to the next byte
 	mov al, byte ptr [si]
-	
-	; extract [_mod]
-	mov dl, al
-	shr dl, 6
-	mov byte ptr [_mod], dl
+
+	; extract _mod
+	call get_mod
 	
 	; extract the r/m to al
 	and al, 07h
@@ -1553,9 +1567,7 @@ handle_1111 proc
 	pop ax
 	
 	; extract [_w] will be usefull for half of the family functions
-	mov dl, al
-	and dl, 01h
-	mov [_w], dl
+	call get_w
 	
 	; check if the command id was 011
 	mov dl, al
@@ -1615,9 +1627,7 @@ handle_1111_011x proc
 	mov al, byte ptr [si]
 
 	; extract mod
-	mov dl, al
-	shr dl, 6
-	mov byte ptr [_mod], dl
+	call get_mod
 
 	; extract the look up bits and place them in al
 	mov dl, al
@@ -1675,9 +1685,7 @@ handle_1111_111x proc
 	mov al, byte ptr [si]
 	
 	; extract mod
-	mov dl, al
-	shr dl, 6
-	mov byte ptr [_mod], dl
+	call get_mod
 	
 	; look up bits
 	mov dl, al
