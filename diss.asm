@@ -7,6 +7,7 @@
 ;;	> Optimize
 ;;	> handle TEST 1111 family
 ;;	> Optimize opcode table
+;;  > move extract _s, _w, _mod different procedures since we use that all the time
 
 
 .model small
@@ -28,7 +29,8 @@ JUMPS																		; for conditional long jumps
 	cannot_open_file db "Error while openning file!"
 					cof_err_len equ $ - cannot_open_file
 	
-	eof_success db "Disassembly complete. End of file reached successfully.", '$'
+	eof_success db "Disassembly complete. End of file reached successfully."
+		eof_success_len equ $ - eof_success
 
 	buffer_in_size db ?
 	buffer_in db BUFFER_IN_LEN dup(?)
@@ -48,7 +50,8 @@ JUMPS																		; for conditional long jumps
 	
 	_d db ?
 	_w db ?
-	_mod dw ?
+	_mod db ?										; word because we need to push / pop sometimes (OPTIMZE LATER)
+	_s db ?
 	
 	; for mov reg, imm8/imm16
 	opcode_table_std_breg_nr db 00h, 'al'
@@ -154,7 +157,16 @@ JUMPS																		; for conditional long jumps
 				db 0Dh, 05h, 'popf'
 				db 0Eh, 05h, 'sahf'
 				db 0Fh, 05h, 'lahf'
-		  _xchg db 00h, 05h, 'xchg'				; if the it loop through all elements di will be placed here
+		  _xchg db 00h, 05h, 'xchg'				; if the it loops through all elements di will be placed here
+		  
+	opcode_1000_00 db 00h, 04h, 'add'
+				   db 01h, 03h, 'or'
+				   db 02h, 04h, 'adc'
+				   db 03h, 04h, 'sbb'
+				   db 04h, 04h, 'and'
+				   db 05h, 04h, 'sub'
+				   db 06h, 04h, 'xor'
+				   db 07h, 04h, 'cmp'
  				
 	_bp_ db 00, 04h, '[bp' 
 				
@@ -306,10 +318,34 @@ eof_reached:							; end of file reached
 	mov bx, [input_file_handle]			; close the input_file
 	mov ah, 3Eh			
 	int 21h	
-
-	lea dx, eof_success
-	mov ah, 09h
-	int 21h
+	
+	; get cursor position dl contains collumn
+	mov ah, 03h
+	mov bh, 0
+	int 10h
+	
+	lea si, eof_success
+	; add color green cuz why not
+	mov cx, eof_success_len
+	_eof_reached_loop:
+		push cx
+		lodsb							; load from si one byte to al, ++si
+		mov cx, 01h
+		mov bl, 0Ah
+		mov ah, 09h
+		int 10h
+		
+		; update the cursor
+		inc dl
+		mov ah, 02h
+		int 10h
+		
+		pop cx
+		loop _eof_reached_loop
+	
+	;lea dx, eof_success
+	;mov ah, 09h
+	;int 21h
 	jmp exit
 	
 print_error:						; cannot open file
@@ -663,18 +699,29 @@ handle_1000 proc
 	cmp dl, 08h
 	je _handle_1000_10_l
 	
-	;; check if the call was other
+	; check if the call was 1000_00sw
+	cmp dl, 00h
+	je _handle_1000_00xx_l
+	
+	;; check if the call was 1000_11x0
 	mov dl, al
 	and dl, 0Dh
 	cmp dl, 0Ch
-	je _handle_1000_1000_11x0_l
+	je _handle_1000_11x0_l
 	
-	_handle_1000_1000_11x0_l:
-	call handle_1000_11x0
+	call handle_unknown
+	jmp _handle_1000_ret
+	
+	_handle_1000_00xx_l:
+	call handle_1000_00
 	jmp _handle_1000_ret
 	
 	_handle_1000_10_l:
 	call handle_1000_10
+	jmp _handle_1000_ret
+	
+	_handle_1000_11x0_l:
+	call handle_1000_11x0
 	jmp _handle_1000_ret
 	
 	_handle_1000_ret:
@@ -682,6 +729,89 @@ handle_1000 proc
 	pop cx dx
 	ret
 endp 
+
+; assumes byte is in al
+handle_1000_00 proc
+	; extract _s
+	mov dl, al
+	and dl, 02h
+	shr dl, 1
+	mov byte ptr [_s], dl
+		
+	; extract _w
+	and al, 01h
+	mov byte ptr [_w], al
+	
+	; move to the next byte
+	call handle_buffer_in
+	mov al, byte ptr [si]
+	
+	; extract _mod
+	mov dl, al
+	shr dl, 6
+	mov byte ptr [_mod], dl
+
+	; find the corresponding commad
+	lea di, opcode_1000_00
+	
+	and al, 38h
+	shr al, 03h
+	
+	push cx
+	mov cx, OPC_1000_00_COUNT
+	_handle_1000_00_look_up:
+		cmp byte ptr [di], al
+		je _handle_1000_00_opc_found
+		
+		call move_di_scnd_byte
+	
+		loop _handle_1000_00_look_up
+		
+	; opcode found, move the command to buffer_out
+	_handle_1000_00_opc_found:
+	pop cx
+	call move_di_to_bx_scnd_byte
+	
+	WHITE_SPACE_BUFFER_OUT
+	
+	; extract rm and move it to buffer_out
+	mov al, byte ptr [si]
+	and al, 07h
+	call move_regmem_to_bx
+	COMMA_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+	
+	; if _s = 0 and w = 1 or 0 default handling
+	cmp [_s], 00h
+	je _handle_1000_00_s0
+	
+	; if w = 0 still can be handled in the regular handle_bojb_bovb procedure
+	cmp [_w], 00h
+	je _handle_1000_00_s0
+
+	; else read on byte and extract it (the byte is currently in al)
+	call handle_buffer_in
+	mov al, byte ptr [si]
+	
+	xor ah, ah
+	cmp ax, 0080h											; use unsigned comparision to check if the msb in al is 1 if so fill ah with 1
+	jb _handle_1000_00_move_bytes							; if above or equal, fill the bytes with 1111
+	
+	mov ah, -1
+	
+	_handle_1000_00_move_bytes:
+	call mov_word_hex_buffer_out
+
+	_handle_1000_00_exit:
+
+	NEW_LINE_BUFFER_OUT
+	call handle_buffer_out
+	ret
+	
+	_handle_1000_00_s0:
+	call handle_bojb_bovb
+	jmp _handle_1000_00_exit
+endp
 
 handle_1000_11x0 proc
 	push cx
@@ -808,7 +938,7 @@ handle_1000_10 proc
 	je handle_1000_10_mod11
 	
 	; handle direction flag when mod is 00, 01, 10
-	push [_mod]
+	push word ptr [_mod]
 	
 	;; if _d == 0 mem/reg -> reg so we can leave the _mod, and load the second reg/mem into al
 	cmp [_d], 0
@@ -832,7 +962,7 @@ handle_1000_10 proc
 	COMMA_BUFFER_OUT
 	WHITE_SPACE_BUFFER_OUT
 	
-	pop [_mod]
+	pop word ptr [_mod]
 	
 	; if _d == 1 reg -> mem/reg so we can leave the _mod, and load the second reg/mem into al
 	cmp [_d], 1

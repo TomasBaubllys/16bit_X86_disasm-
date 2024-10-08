@@ -41,3 +41,12 @@
   - `POPF`
   - `SAHF`
   - `LAHF`
+- **1000 family**
+  - `ADD`
+  - `OR`
+  - `ADC`
+  - `SBB`
+  - `AND`
+  - `SUB`
+  - `XOR`
+  - `CMP`
