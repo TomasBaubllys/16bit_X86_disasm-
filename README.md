@@ -50,10 +50,10 @@
   - `SUB`
   - `XOR`
   - `CMP`
-  - `test`
-  - `xchg`
-  - `lea`
-  - `pop`
+  - `TEST`
+  - `XCHG`
+  - `LEA`
+  - `POP`
 - **1010 family**
   - `MOVSB/MOVSW`
   - `CMPSB/CMPSW`
