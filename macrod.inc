@@ -30,7 +30,9 @@ OPC_1000_ELSE_COUNT = 02h
 OPC_1111_111_COUNT = 07h
 
 ;; input buffer
-BUFFER_IN_LEN = 255
+BUFFER_IN_LEN = 02h
+
+BYTE_BUFFER_LEN = 0Dh
 
 ;; output buffer
 BUFFER_OUT_LEN = 20h

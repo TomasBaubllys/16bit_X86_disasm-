@@ -37,6 +37,10 @@ JUMPS																		; for conditional long jumps
 	buffer_in_size db ?
 	buffer_in db BUFFER_IN_LEN dup(?)
 	
+	byte_buffer_size db ?
+	byte_buffer db BYTE_BUFFER_LEN dup(?)
+	byte_buffer_iter dw ? 
+	
 	current_address dw 0000h
 	
 	buffer_out_size db ?
@@ -217,6 +221,10 @@ start:
 	mov ax, es
 	mov ds, ax
 	
+	; move the byte_buffer_iter to the beggining
+	mov dx, offset byte_buffer
+	mov ds:[byte_buffer_iter], dx 	
+	
 	; open file name
 	lea dx,  ds:[output_file]
 	mov ax, 3C00h
@@ -235,6 +243,10 @@ start:
 	
 	; save the file hande
 	mov word ptr [input_file_handle], ax
+	
+	mov [buffer_in_size], 1
+	call handle_buffer_in
+	jmp parse_buffer
 	
 	read_buffer_jmp:
 		call read_buffer
@@ -272,6 +284,8 @@ start:
 		cmp bl, 09h
 		je handle_1001_l
 		
+		lea bx, buffer_out
+		call handle_unknown
 		jmp _continue_loop
 		
 		handle_1011_l:
@@ -632,6 +646,47 @@ mov_byte_hex_buffer_out proc
 	ret
 endp
 
+mov_byte_hex_byte_buffer proc
+	push cx ax
+	
+	xor ah, ah
+	mov cl, 10h
+	div cl
+	
+	push ax 				; save the remainder
+
+	cmp al, 0Ah
+	jb _mov_byte_hex_byte_buffer_first_hex
+	
+	add al, 7				; add if its a letter
+	
+	_mov_byte_hex_byte_buffer_first_hex:
+		add al, '0'
+		mov byte ptr [bx], al
+		inc bx
+		inc [byte_buffer_size]
+	
+	pop ax
+	
+	mov al, ah 
+	cmp al, 0Ah
+	jb _mov_byte_hex_byte_buffer_second_hex
+	
+	add al, 7
+	
+	_mov_byte_hex_byte_buffer_second_hex:
+		add al, '0'
+		mov byte ptr [bx], al
+		inc bx
+		inc [byte_buffer_size]
+		
+	add byte_buffer_iter, 2
+
+	pop ax cx
+	
+	ret
+endp
+
 ;; assumes word is in ax and pointer is in bx (NEEDS OPTIMIZATION)
 mov_word_hex_buffer_out proc
 	push ax												; save ax 
@@ -910,8 +965,8 @@ handle_1000_else proc
 	; extract _w
 	call get_w
 	
-	mov dl, al								; save al
 	call handle_buffer_in
+	mov dl, al								; save al
 	mov al, byte ptr [si]
 	
 	; extract _mod
@@ -944,9 +999,9 @@ handle_1000_else proc
 	call mov_mod11_reg_to_bx
 	
 	COMMA_BUFFER_OUT
-	WHITE_SPACE_BUFFER_OUT
 	
 	_handle_1000_else_read_rm:
+	WHITE_SPACE_BUFFER_OUT
 	;extract the second byte
 	mov al, byte ptr[si]
 	and al, 07h
@@ -1671,9 +1726,8 @@ handle_unknown proc
 	lea di, unknown_str
 	mov cx, unknown_str_len
 	call move_command_to_bffr
-	NEW_LINE_BUFFER_OUT
 	call handle_buffer_out
-	pop dx cx
+	pop  dx cx
 	ret
 endp
 
