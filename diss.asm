@@ -1,5 +1,5 @@
 ; Programa: Nr. 3
-; Užduoties sąlyga: Apdoroti:mov, out, not, rcr, xlat
+; Užduoties sąlyga: dissssss
 ; Atliko: Tomas Baublys 
 
 ;; TODO :
@@ -7,6 +7,7 @@
 ;;	> Optimize
 ;;	> handle TEST 1111 family
 ;;	> Optimize opcode table use multiplication add, or, 0, adc
+;;  > Change mov reg <- imm8/imm16 to utilize the framework 
 
 
 .model small
@@ -522,7 +523,7 @@ get_w proc
 	ret
 endp
 
-;; expects current byte in al
+; expects current byte in al THIS NEEDS TO BE REDONE (brought up ot framework levels)
 handle_0111 proc
 	push cx ax bx
 	
@@ -850,12 +851,7 @@ handle_1000 proc
 	lea bx, buffer_out
 	
 	; mov current address into buffer out
-	push ax dx
-	mov ax, [current_address]
-	call mov_word_hex_buffer_out
-	COLON_BUFFER_OUT
-	WHITE_SPACE_BUFFER_OUT
-	pop dx ax
+	call move_curr_address_buffer_out
 	
 	; check if the call was 1000_10dw
 	mov dl, al
@@ -1423,15 +1419,9 @@ handle_1010 proc
 	
 	; load the adress
 	lea bx, buffer_out
-	
-	push ax dx
+
 	; mov current address into buffer out
-	mov ax, [current_address]
-	call mov_word_hex_buffer_out
-	COLON_BUFFER_OUT
-	WHITE_SPACE_BUFFER_OUT
-	
-	pop dx ax
+	call move_curr_address_buffer_out
 	
 	; extract [_w]
 	call get_w
@@ -1602,13 +1592,8 @@ handle_1100 proc
 	; load the adress
 	lea bx, buffer_out
 	
-	push ax dx
 	; mov current address into buffer out
-	mov ax, [current_address]
-	call mov_word_hex_buffer_out
-	COLON_BUFFER_OUT
-	WHITE_SPACE_BUFFER_OUT
-	pop dx ax
+	call move_curr_address_buffer_out
 	
 	mov dl, al
 	and dl, 0Eh
@@ -1720,9 +1705,6 @@ endp
 
 ; expects bx -> buffer_out, di -> opc 'reg' on return cx -> bytes copied
 move_cxdi_to_bx proc 
-	;xor ch, ch
-	;mov cl, OPC_REG_NAME_LEN - 1	
-
 	push ds es cx di si
 	inc di										; move to the beginning of the opcode
 	mov ax, ds									; es == ds
@@ -1757,12 +1739,7 @@ handle_1111 proc
 	lea bx, buffer_out
 	
 	; mov current address into buffer out
-	push ax
-	mov ax, [current_address]
-	call mov_word_hex_buffer_out
-	COLON_BUFFER_OUT
-	WHITE_SPACE_BUFFER_OUT
-	pop ax
+	call move_curr_address_buffer_out
 	
 	; extract [_w] will be usefull for half of the family functions
 	call get_w
@@ -1927,12 +1904,7 @@ handle_0100 proc
 	lea bx, buffer_out
 	
 	; mov current address into buffer out
-	push ax
-	mov ax, [current_address]
-	call mov_word_hex_buffer_out
-	COLON_BUFFER_OUT
-	WHITE_SPACE_BUFFER_OUT
-	pop ax
+	call move_curr_address_buffer_out
 
 	; extract the look_up byte
 	mov dl, al
@@ -1972,12 +1944,7 @@ handle_0101 proc
 	lea bx, buffer_out
 	
 	; mov current address into buffer out
-	push ax
-	mov ax, [current_address]
-	call mov_word_hex_buffer_out
-	COLON_BUFFER_OUT
-	WHITE_SPACE_BUFFER_OUT
-	pop ax
+    call move_curr_address_buffer_out
 
 	; extract the look_up byte
 	mov dl, al
@@ -2016,12 +1983,7 @@ handle_1001 proc
 	lea bx, buffer_out
 	
 	; mov current address into buffer out
-	push ax dx
-	mov ax, [current_address]
-	call mov_word_hex_buffer_out
-	COLON_BUFFER_OUT
-	WHITE_SPACE_BUFFER_OUT
-	pop dx ax
+	call move_curr_address_buffer_out
 	
 	and al, 0Fh
 	
@@ -2209,7 +2171,6 @@ move_curr_address_buffer_out proc
 	
 	ret
 endp
-
 
 ; assumes byte is loaded to al _d, _w, _mod are set
 handle_dw_mod_reg_rm_offset proc 
