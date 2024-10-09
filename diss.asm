@@ -133,7 +133,7 @@ JUMPS																		; for conditional long jumps
 					db 03h, 05h, 'call'
 					db 04h, 04h, 'jmp'
 					db 05h, 04h, 'jmp'
-					db 06h, 05h, 'push'
+			  _push db 06h, 05h, 'push'
 					
 	opcode_0100 db 00h, 04h, 'inc'
 				db 01h, 04h, 'dec'
@@ -181,10 +181,12 @@ JUMPS																		; for conditional long jumps
 							 db 06h, 06h, 'lodsb'
 							 db 07h, 06h, 'scasb'
 							 
-	opcode_1000_else_w db 02h, 05h, 'test'
-					   db 03h, 05h, 'xchg'
-	opcode_1000_else_no_w	db 0Dh, 04h, 'lea'
-					   db 0Fh, 04h, 'pop'
+		 opcode_1000_else_w db 02h, 05h, 'test'
+							db 03h, 05h, 'xchg'
+	  opcode_1000_else_no_w db 0Dh, 04h, 'lea'
+					        db 0Fh, 04h, 'pop'
+							
+	_pop db 07h, 04h, 'pop'
  				
 	_bp_ db 00, 04h, '[bp' 
 				
@@ -257,6 +259,20 @@ start:
 		
 		mov bl, al
 		shr bl, 4				; check if the call was Bxh
+		
+		cmp bl, 00h
+		je handle_0000_l
+		
+		; check for 0001 first
+		;cmp bl, 01h
+		;je handle_0001
+		
+		; check for 000s
+		mov dl, bl
+		shr dl, 1
+		cmp dl, 00h
+		je handle_0000_l
+		
 		cmp bl, 0Bh
 		je	handle_1011_l	 
 
@@ -286,6 +302,10 @@ start:
 		
 		lea bx, buffer_out
 		call handle_unknown
+		jmp _continue_loop
+		
+		handle_0000_l:
+		call handle_0000
 		jmp _continue_loop
 		
 		handle_1011_l:
@@ -2058,4 +2078,56 @@ handle_1001 proc
 	ret
 endp
 
+; assumes the byte is in al
+handle_0000 proc
+	push cx
+	
+	lea bx, buffer_out
+
+	; mov current address into buffer out
+	push ax dx
+	mov ax, [current_address]
+	call mov_word_hex_buffer_out
+	COLON_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+	pop dx ax
+	
+	
+	
+	;;;; check others
+
+	; check if it was either r110 or r111
+	mov dl, al
+	and dl, 07h
+	cmp dl, [_pop]
+	je _handle_0000_pop 
+
+	cmp dl, [_push]
+	je _handle_0000_push
+
+	; exit
+	_handle_0000_exit:
+	call handle_buffer_out
+	pop cx
+	ret
+	
+	_handle_0000_pop:
+		lea di, _pop 
+		jmp _handle_0000_pop_push
+		
+	_handle_0000_push:
+		lea di, _push 
+	
+	_handle_0000_pop_push:
+		call move_di_to_bx_scnd_byte
+		
+		WHITE_SPACE_BUFFER_OUT
+		
+		; extract sr
+		and al, 18h
+		shr al, 3
+		call mov_sr_to_bx
+		jmp _handle_0000_exit
+	
+endp
 end start
