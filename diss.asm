@@ -6,8 +6,7 @@
 ;; 	> handle rep better
 ;;	> Optimize
 ;;	> handle TEST 1111 family
-;;	> Optimize opcode table
-;;  > move extract _s, _w, _mod different procedures since we use that all the time
+;;	> Optimize opcode table use multiplication add, or, 0, adc
 
 
 .model small
@@ -162,7 +161,7 @@ JUMPS																		; for conditional long jumps
 				db 0Fh, 05h, 'lahf'
 		  _xchg db 00h, 05h, 'xchg'				; if the it loops through all elements di will be placed here
 		  
-	opcode_1000_00 db 00h, 04h, 'add'
+	opcode_1000_00 db 00h, 04h, 'add'		
 				   db 01h, 03h, 'or'
 				   db 02h, 04h, 'adc'
 				   db 03h, 04h, 'sbb'
@@ -170,6 +169,13 @@ JUMPS																		; for conditional long jumps
 				   db 05h, 04h, 'sub'
 				   db 06h, 04h, 'xor'
 				   db 07h, 04h, 'cmp'
+				   
+	opcode_1000_010x_to_111x db 02h, 06h, 'movsb'
+							 db 03h, 06h, 'cmpsb'
+							 db 04h, 05h, 'test'
+							 db 05h, 06h, 'stosb'
+							 db 06h, 06h, 'lodsb'
+							 db 07h, 06h, 'scasb'
  				
 	_bp_ db 00, 04h, '[bp' 
 				
@@ -1292,12 +1298,61 @@ handle_1010 proc
 	
 	cmp dl, 00h
 	je handle_1010_00_l
+	
+	call handle_1010_010x_111x
+	jmp _handle_1010_ret
 
 	handle_1010_00_l:
 	call handle_1010_00
 
+	_handle_1010_ret:
 	pop dx
 	ret
+endp
+
+; expects _w to be set
+handle_1010_010x_111x proc
+	lea di, opcode_1000_010x_to_111x
+	
+	; extract the id
+	mov al, byte ptr [si]
+	and al, 0Fh
+	shr al, 01h
+	
+	push cx
+	mov cx, OPC_1000_010x_to_111x_COUNT
+	
+	_handle_1010_010x_111x_look_up:
+		cmp byte ptr [di], al
+		je handle_1010_010x_111x_opc_found
+		
+		call move_di_scnd_byte
+	
+	loop _handle_1010_010x_111x_look_up
+	
+	handle_1010_010x_111x_opc_found:
+	call move_di_to_bx_scnd_byte
+	
+	; check if the command was test accum <-> inst
+	cmp byte ptr [bx - 1], 't'
+	jne _handle_1010_010x_111x_exit
+
+	WHITE_SPACE_BUFFER_OUT
+
+	xor ax, ax
+	call mov_mod11_reg_to_bx
+	
+	COMMA_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+	
+	call handle_bojb_bovb
+	
+	_handle_1010_010x_111x_exit:
+	NEW_LINE_BUFFER_OUT
+	call handle_buffer_out
+	
+	pop cx
+	ret 
 endp
 
 ; move ax <-> mem, assumes byte -> al, and bx -> buffer out, si -> buffer_in

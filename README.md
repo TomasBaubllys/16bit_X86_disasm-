@@ -50,3 +50,10 @@
   - `SUB`
   - `XOR`
   - `CMP`
+- **1010 family**
+  - `MOVSB/MOVSW`
+  - `CMPSB/CMPSW`
+  - `TEST`
+  - `STOSB/STOSW`
+  - `LODSB/LODSW`
+  - `SCASB/SCASW`
