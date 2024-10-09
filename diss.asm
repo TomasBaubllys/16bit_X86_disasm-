@@ -526,8 +526,6 @@ handle_0111 proc
 	mov al, byte ptr [si]	
 	call mov_byte_hex_buffer_out					; move the jump address to the buffer
 	
-	NEW_LINE_BUFFER_OUT								; add a new line
-	
 	call handle_buffer_out							; flush the buffer to stdout
 	
 	pop bx ax cx
@@ -765,7 +763,6 @@ handle_1011 proc
 	call handle_bojb_bovb
 	
 	_handle_1011_flush:
-	NEW_LINE_BUFFER_OUT
 	call handle_buffer_out
 	pop bx ax cx
 	ret
@@ -899,7 +896,6 @@ handle_1000_00 proc
 
 	_handle_1000_00_exit:
 
-	NEW_LINE_BUFFER_OUT
 	call handle_buffer_out
 	ret
 	
@@ -977,7 +973,6 @@ handle_1000_else proc
 	jmp _handle_1000_else_read_rm
 	
 	_handle_1000_else_exit:
-	NEW_LINE_BUFFER_OUT
 	call handle_buffer_out
 	pop cx
 	ret 
@@ -1040,7 +1035,6 @@ handle_1000_11x0 proc
 	call mov_sr_to_bx
 	
 	handle_1000_11x0_exit:
-	NEW_LINE_BUFFER_OUT
 	call handle_buffer_out
 	pop cx
 	ret 
@@ -1141,7 +1135,6 @@ handle_1000_10 proc
 	handle_1000_10_skip_swap_4 :
 	call move_regmem_to_bx
 	
-	NEW_LINE_BUFFER_OUT
 	call handle_buffer_out
 	
 	pop dx cx
@@ -1169,7 +1162,6 @@ handle_1000_10 proc
 		call move_regmem_to_bx
 		;; check for offsetn
 		
-		NEW_LINE_BUFFER_OUT
 		call handle_buffer_out
 		
 		pop dx cx
@@ -1431,7 +1423,6 @@ handle_1010_010x_111x proc
 	call handle_bojb_bovb
 	
 	_handle_1010_010x_111x_exit:
-	NEW_LINE_BUFFER_OUT
 	call handle_buffer_out
 	
 	pop cx
@@ -1524,9 +1515,6 @@ handle_1010_00 proc
 
 
 	handle_1010_00_exit:
-	
-	NEW_LINE_BUFFER_OUT
-	
 	call handle_buffer_out
 	pop dx cx
 	ret
@@ -1583,7 +1571,6 @@ handle_1100_1101 proc
 	mov al, byte ptr [si]
 	call mov_byte_hex_buffer_out
 	
-	NEW_LINE_BUFFER_OUT
 	call handle_buffer_out
 	ret	
 endp
@@ -1617,7 +1604,6 @@ handle_1100_011 proc
 	call handle_bojb_bovb
 	
 	handle_1100_011_exit:
-	NEW_LINE_BUFFER_OUT	
 	call handle_buffer_out
 	ret
 endp
@@ -1752,7 +1738,6 @@ handle_1111_0000_to_0101_1000_to_1101 proc
 	_handle_1111_0000_to_0101_1000_to_1101_opc_found:
 	call move_di_to_bx_scnd_byte
 
-	NEW_LINE_BUFFER_OUT
 	call handle_buffer_out	
 		
 	pop cx
@@ -1812,7 +1797,6 @@ handle_1111_011x proc
 	call handle_bojb_bovb
 		
 	_handle_1111_011x_exit:
-	NEW_LINE_BUFFER_OUT
 	call handle_buffer_out
 	ret
 endp
@@ -1858,8 +1842,7 @@ handle_1111_111x proc
 	
 	; move handle r/m
 	call move_regmem_to_bx
-	
-	NEW_LINE_BUFFER_OUT
+
 	call handle_buffer_out
 	ret
 endp 
@@ -1905,7 +1888,6 @@ handle_0100 proc
 	and al, 07h
 	call mov_mod11_reg_to_bx
 	
-	NEW_LINE_BUFFER_OUT
 	call handle_buffer_out
 	ret 
 endp
@@ -1950,8 +1932,7 @@ handle_0101 proc
 	; extract the byte
 	and al, 07h
 	call mov_mod11_reg_to_bx
-	
-	NEW_LINE_BUFFER_OUT
+
 	call handle_buffer_out
 	ret 
 endp
@@ -2001,7 +1982,6 @@ handle_1001 proc
 	handle_1001_exit:
 	
 	pop cx
-	NEW_LINE_BUFFER_OUT
 	call handle_buffer_out
 	ret
 	
@@ -2021,7 +2001,7 @@ handle_1001 proc
 		mov al, 00h
 		call mov_mod11_reg_to_bx
 		jmp handle_1001_exit
-	
+	ret
 endp
 
 end start
