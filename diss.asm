@@ -176,6 +176,11 @@ JUMPS																		; for conditional long jumps
 							 db 05h, 06h, 'stosb'
 							 db 06h, 06h, 'lodsb'
 							 db 07h, 06h, 'scasb'
+							 
+	opcode_1000_else_w db 02h, 05h, 'test'
+					   db 03h, 05h, 'xchg'
+	opcode_1000_else_no_w	db 0Dh, 04h, 'lea'
+					   db 0Fh, 04h, 'pop'
  				
 	_bp_ db 00, 04h, '[bp' 
 				
@@ -796,6 +801,9 @@ handle_1000 proc
 	cmp dl, 0Ch
 	je _handle_1000_11x0_l
 	
+	call handle_1000_else
+	jmp _handle_1000_ret
+	
 	call handle_unknown
 	jmp _handle_1000_ret
 	
@@ -898,6 +906,81 @@ handle_1000_00 proc
 	_handle_1000_00_s0:
 	call handle_bojb_bovb
 	jmp _handle_1000_00_exit
+endp
+
+; assumes the byte is in al handles all 1000 family calls except 00, 01, 10
+handle_1000_else proc
+	push cx
+	; extract _w
+	call get_w
+	
+	mov dl, al								; save al
+	call handle_buffer_in
+	mov al, byte ptr [si]
+	
+	; extract _mod
+	call get_mod
+	
+	; get only the id bytes (USE DL FOR LOOK UP)
+	and dl, 0Fh
+	cmp dl, 08h
+	jae _handle_1000_else_no_w
+	
+	; handle only when al is xxxx 0xxxx
+	mov cx, OPC_1000_ELSE_COUNT													
+	lea di, opcode_1000_else_w
+	shr dl, 01h
+	_handle_1000_else_look_up_w:
+		cmp dl, byte ptr [di]
+		je _handle_1000_else_opc_found_w
+		
+		call move_di_scnd_byte
+		loop _handle_1000_else_look_up_w
+		
+	_handle_1000_else_opc_found_w:
+	call move_di_to_bx_scnd_byte
+	
+	_handle_1000_else_read_both_regs:
+	WHITE_SPACE_BUFFER_OUT
+	;extract the first reg
+	and al, 38h
+	shr al, 3
+	call mov_mod11_reg_to_bx
+	
+	COMMA_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+	
+	_handle_1000_else_read_rm:
+	;extract the second byte
+	mov al, byte ptr[si]
+	and al, 07h
+	call move_regmem_to_bx
+	
+	jmp _handle_1000_else_exit
+	_handle_1000_else_no_w:
+
+	_handle_1000_else_look_up_no_w:
+	lea di, opcode_1000_else_no_w
+	
+	cmp dl, 0Fh
+	je _handle_1000_1111
+	
+	call move_di_to_bx_scnd_byte
+	; back track sinse we just need to read both reg and mem
+	jmp _handle_1000_else_read_both_regs 
+	
+	_handle_1000_1111:
+	call move_di_scnd_byte
+	
+	; backtrack again
+	call move_di_to_bx_scnd_byte
+	jmp _handle_1000_else_read_rm
+	
+	_handle_1000_else_exit:
+	NEW_LINE_BUFFER_OUT
+	call handle_buffer_out
+	pop cx
+	ret 
 endp
 
 handle_1000_11x0 proc

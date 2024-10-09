@@ -24,6 +24,9 @@ OPC_0101_COUNT = 02h
 
 OPC_1000_010x_to_111x_COUNT = 06h
 
+; split into two arrays size of 2 total = 4
+OPC_1000_ELSE_COUNT = 02h
+
 OPC_1111_111_COUNT = 07h
 
 ;; input buffer
