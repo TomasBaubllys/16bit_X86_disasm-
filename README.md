@@ -62,7 +62,7 @@
   - `LODSB/LODSW`
   - `SCASB/SCASW`
 - **00 family**
-  -`ADD(2)`
-  -`PUSH`
-  -`POP`
-  -`OR(2)`
+  - `ADD(2)`
+  - `PUSH`
+  - `POP`
+  - `OR(2)`
