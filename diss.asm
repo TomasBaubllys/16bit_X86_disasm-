@@ -166,7 +166,7 @@ JUMPS																		; for conditional long jumps
 		  _xchg db 00h, 05h, 'xchg'				; if the it loops through all elements di will be placed here
 		  
 	opcode_1000_00 db 00h, 04h, 'add'		
-				   db 01h, 03h, 'or'
+			  _or  db 01h, 03h, 'or'
 				   db 02h, 04h, 'adc'
 				   db 03h, 04h, 'sbb'
 				   db 04h, 04h, 'and'
@@ -2085,17 +2085,8 @@ handle_0000 proc
 	lea bx, buffer_out
 
 	; mov current address into buffer out
-	push ax dx
-	mov ax, [current_address]
-	call mov_word_hex_buffer_out
-	COLON_BUFFER_OUT
-	WHITE_SPACE_BUFFER_OUT
-	pop dx ax
+	call move_curr_address_buffer_out
 	
-	
-	
-	;;;; check others
-
 	; check if it was either r110 or r111
 	mov dl, al
 	and dl, 07h
@@ -2104,7 +2095,54 @@ handle_0000 proc
 
 	cmp dl, [_push]
 	je _handle_0000_push
+	
+	; handle others		
+	; get _w
+	call get_w
 
+	; check if xydw or xy0w 
+	mov dl, al
+	mov cl, al
+	
+	and cl, 0Ch
+	cmp cl, 0Ch
+	je _handle_0000_xx0w
+	
+	and dl, 0Ch
+	cmp dl, 04h
+	je _handle_0000_xx0w
+
+	; else handle the last case
+	; load _d
+	call get_d
+	
+	; move the apropriate command to buffer out
+	and al, 08h
+	shr al, 03h
+	
+	cmp al, byte ptr [_or]
+	je _handle_0000_else_or
+	
+	lea di, opcode_1000_00
+	jmp _handle_0000_else_or_add
+	
+	_handle_0000_else_or:
+		lea di, _or
+		
+	_handle_0000_else_or_add:
+	call move_di_to_bx_scnd_byte
+	
+	WHITE_SPACE_BUFFER_OUT
+	
+	; load the new byte
+	call handle_buffer_in
+	mov al, byte ptr [si]
+
+	; read _mod
+	call get_mod
+	
+	call handle_dw_mod_reg_rm_offset
+	
 	; exit
 	_handle_0000_exit:
 	call handle_buffer_out
@@ -2128,6 +2166,90 @@ handle_0000 proc
 		shr al, 3
 		call mov_sr_to_bx
 		jmp _handle_0000_exit
+		
+	_handle_0000_xx0w:
+		mov dl, al
+		and dl, 08h
+		shr dl, 3
+		cmp dl, byte ptr [_or]
+		je _handle_0000_xx0w_or
+		
+		; add is the first in the table
+		lea di, opcode_1000_00
+		jmp _handle_0000_xx0w_or_add
+		
+		_handle_0000_xx0w_or:
+		lea di, _or
+
+		_handle_0000_xx0w_or_add:
+		call move_di_to_bx_scnd_byte
+		
+		WHITE_SPACE_BUFFER_OUT
+		
+		; move acumulator to buffer_out
+		mov ax, 0000h
+		call mov_mod11_reg_to_bx
+		
+		COMMA_BUFFER_OUT
+		WHITE_SPACE_BUFFER_OUT
+		
+		call handle_bojb_bovb
+		
+		jmp _handle_0000_exit
 	
 endp
+
+move_curr_address_buffer_out proc
+	push ax dx
+	mov ax, [current_address]
+	call mov_word_hex_buffer_out
+	COLON_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+	pop dx ax
+	
+	ret
+endp
+
+
+; assumes byte is loaded to al _d, _w, _mod are set
+handle_dw_mod_reg_rm_offset proc 
+	push cx
+	mov dl, al
+
+	cmp byte ptr [_d], 0
+	je _handle_dw_mod_reg_rm_offset_d0
+	
+	; extract reg and move it to buffer out
+	and al, 38h
+	shr al, 03h
+	call mov_mod11_reg_to_bx
+
+	COMMA_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+	
+	; extract the second byte and move it to buffer out
+	mov al, dl
+	and al, 07h
+	call move_regmem_to_bx
+	jmp handle_dw_mod_reg_rm_offset_ret
+	
+	_handle_dw_mod_reg_rm_offset_d0:		
+		; extract rm and move it to buffer out
+		and al, 07h
+		call move_regmem_to_bx
+
+		COMMA_BUFFER_OUT
+		WHITE_SPACE_BUFFER_OUT
+		
+		; extract the reg byte and move it to buffer out
+		mov al, dl
+		and al, 38h
+		shr al, 3
+		call mov_mod11_reg_to_bx
+
+	handle_dw_mod_reg_rm_offset_ret:
+	pop cx
+	ret
+endp 
+
 end start
