@@ -173,8 +173,8 @@ JUMPS																		; for conditional long jumps
 			  _sbb db 03h, 04h, 'sbb'
 			  _and db 04h, 04h, 'and'
 			  _sub db 05h, 04h, 'sub'
-				   db 06h, 04h, 'xor'
-				   db 07h, 04h, 'cmp'
+			  _xor db 06h, 04h, 'xor'
+			 _cmp db 07h, 04h, 'cmp'
 				   
 	opcode_1000_010x_to_111x db 02h, 06h, 'movsb'
 							 db 03h, 06h, 'cmpsb'
@@ -198,6 +198,9 @@ JUMPS																		; for conditional long jumps
 					
 	_daa db 07h, 04h, 'daa'
 	_das db 0Fh, 04h, 'das'
+	
+	_aaa db 07h, 04h, 'aaa' 
+	_aas db 0Fh, 04h, 'aas'
 							
 	_pop db 07h, 04h, 'pop'
  				
@@ -290,6 +293,9 @@ start:
 		cmp dl, 26h
 		je handle_0010_l
 		
+		cmp bl, 03h
+		je handle_0011_l
+		
 		cmp bl, 0Bh
 		je	handle_1011_l	
 
@@ -337,6 +343,10 @@ start:
 		
 		handle_0010_l:
 		call handle_0010
+		jmp _continue_loop
+		
+		handle_0011_l:
+		call handle_0011
 		jmp _continue_loop
 		
 		handle_1011_l:
@@ -2382,7 +2392,7 @@ handle_1101_00 proc
 	ret
 endp
 
-; assuems the byte is in al IN THE WORKS
+; assumes the byte is in al
 handle_0010 proc
 	lea bx, buffer_out
 	call move_curr_address_buffer_out
@@ -2466,6 +2476,77 @@ handle_0010 proc
 	inc [buffer_out_size]
 	jmp _handle_0010_ret
 	
+endp
+
+; assumes the byte is in al
+handle_0011 proc
+	lea bx, buffer_out
+	call move_curr_address_buffer_out
+	
+	; check if it was daa or das
+	mov dl, al
+	and dl, 0Fh
+	
+	cmp dl, [_aaa]
+	je _handle_0011_aaa
+	
+	cmp dl, [_aas]
+	je _handle_0011_aas ;;
+	; handle everything else
+	
+	; get _w
+	call get_w
+	; extract the first 4 bit
+	mov dl, al
+	and dl, 08h
+	shr dl, 03h
+	cmp dl, 01h					; dl == 1 -> cmp, dl == 0 -> xor
+	je _handle_0011_cmp
+	
+	lea di, _xor
+	jmp _handle_0011_xor_cmp
+	
+	_handle_0011_cmp:
+		lea di, _cmp
+	
+	_handle_0011_xor_cmp:
+	; move the command to buffer_out
+	call move_di_to_bx_scnd_byte
+	WHITE_SPACE_BUFFER_OUT
+	
+	; now extract second deciding byte
+	mov dl, al
+	and dl, 04h
+	shr dl, 02h
+	cmp dl, 00h					; dl == 0 -> dw_mod_reg_r/m_offset dl == 1 -> bojb bovb
+	je _handle_0011_dw_mod_reg_rm_offset
+
+	mov al, 00h
+	call mov_mod11_reg_to_bx
+	COMMA_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+	
+	call handle_bojb_bovb
+	jmp _handle_0011_ret
+
+	_handle_0011_dw_mod_reg_rm_offset:
+	call get_d
+	call handle_dw_mod_reg_rm_offset
+
+	
+	_handle_0011_ret:
+	call handle_buffer_out
+	ret 
+	
+	_handle_0011_aaa:
+	lea di, _aaa
+	call move_di_to_bx_scnd_byte
+	jmp _handle_0011_ret
+	
+	_handle_0011_aas:
+	lea di, _aas
+	call move_di_to_bx_scnd_byte
+	jmp _handle_0011_ret
 	
 endp
 
