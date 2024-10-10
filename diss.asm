@@ -167,9 +167,9 @@ JUMPS																		; for conditional long jumps
 		  _xchg db 00h, 05h, 'xchg'				; if the it loops through all elements di will be placed here
 		  
 	opcode_1000_00 db 00h, 04h, 'add'		
-			  _or  db 01h, 03h, 'or'
-				   db 02h, 04h, 'adc'
-				   db 03h, 04h, 'sbb'
+			   _or db 01h, 03h, 'or'
+			  _adc db 02h, 04h, 'adc'
+			  _sbb db 03h, 04h, 'sbb'
 				   db 04h, 04h, 'and'
 				   db 05h, 04h, 'sub'
 				   db 06h, 04h, 'xor'
@@ -264,15 +264,15 @@ start:
 		cmp bl, 00h
 		je handle_0000_l
 		
-		; check for 0001 first
-		;cmp bl, 01h
-		;je handle_0001
-		
 		; check for 000s
-		mov dl, bl
-		shr dl, 1
-		cmp dl, 00h
+		mov dl, al
+		and dl, 0E6h			; 1110 0110
+		cmp dl, 06h				; 000 0 0110
 		je handle_0000_l
+		
+		; check for 0001 first
+		cmp bl, 01h
+		je handle_0001_l
 		
 		cmp bl, 0Bh
 		je	handle_1011_l	 
@@ -307,6 +307,10 @@ start:
 		
 		handle_0000_l:
 		call handle_0000
+		jmp _continue_loop
+		
+		handle_0001_l:
+		call handle_0001
 		jmp _continue_loop
 		
 		handle_1011_l:
@@ -1309,7 +1313,6 @@ mov_mod11_reg_to_bx proc
 	; add to bx the ammount we moved
 	add bx, cx
 	add [buffer_out_size], cl
-	
 	ret
 endp
 
@@ -2091,13 +2094,6 @@ handle_0000 proc
 	
 	WHITE_SPACE_BUFFER_OUT
 	
-	; load the new byte
-	call handle_buffer_in
-	mov al, byte ptr [si]
-
-	; read _mod
-	call get_mod
-	
 	call handle_dw_mod_reg_rm_offset
 	
 	; exit
@@ -2156,6 +2152,62 @@ handle_0000 proc
 	
 endp
 
+; assumes the byte is in al
+handle_0001 proc
+	lea bx, buffer_out
+	; move address to buffer_out
+	call move_curr_address_buffer_out
+	
+	; read _w, _d
+	call get_w
+	call get_d
+	
+	; extract first deciding bit
+	mov dl, al
+	and dl, 08h
+	shr dl, 03h
+	
+	; move the commad to buffer out depending on the byte  0 == adc, 1 == sbb
+	cmp dl, 01h
+	je _handle_0001_sbb
+
+		lea di, _adc
+	jmp _handle_0001_after_command
+	
+	_handle_0001_sbb:
+		lea di, _sbb
+		
+	_handle_0001_after_command:
+	; move the command to buffer out
+	call move_di_to_bx_scnd_byte
+	WHITE_SPACE_BUFFER_OUT
+	
+	; extract the second deciding byte
+	mov dl, al
+	and dl, 04h
+	shr dl, 02h
+	
+	; dl == 0 dw_mod_reg_offset, dl == 1 bojb [bovb]
+	cmp dl, 01h
+	je _handle_0001_bojb_bovb
+	
+	call handle_dw_mod_reg_rm_offset
+	
+	jmp _handle_0001_ret
+	_handle_0001_bojb_bovb:
+		mov al, 00h
+		call mov_mod11_reg_to_bx
+		
+		COMMA_BUFFER_OUT
+		WHITE_SPACE_BUFFER_OUT
+		
+		call handle_bojb_bovb 
+
+	_handle_0001_ret:
+	call handle_buffer_out
+	ret
+endp
+
 move_curr_address_buffer_out proc
 	push ax dx
 	mov ax, [current_address]
@@ -2167,10 +2219,13 @@ move_curr_address_buffer_out proc
 	ret
 endp
 
-; assumes byte is loaded to al _d, _w, _mod are set
+; assumes byte is loaded to al _d, _w are set, moves to the needed byte itself
 handle_dw_mod_reg_rm_offset proc 
-	push cx
-	mov dl, al
+	call handle_buffer_in
+	mov al, byte ptr [si]
+	mov cl, al
+	
+	call get_mod
 
 	cmp byte ptr [_d], 0
 	je _handle_dw_mod_reg_rm_offset_d0
@@ -2184,7 +2239,7 @@ handle_dw_mod_reg_rm_offset proc
 	WHITE_SPACE_BUFFER_OUT
 	
 	; extract the second byte and move it to buffer out
-	mov al, dl
+	mov al, byte ptr [si]									; move from here since previuos called mod11 modifies cx
 	and al, 07h
 	call move_regmem_to_bx
 	jmp handle_dw_mod_reg_rm_offset_ret
@@ -2198,13 +2253,12 @@ handle_dw_mod_reg_rm_offset proc
 		WHITE_SPACE_BUFFER_OUT
 		
 		; extract the reg byte and move it to buffer out
-		mov al, dl
+		mov al, cl
 		and al, 38h
 		shr al, 3
 		call mov_mod11_reg_to_bx
 
 	handle_dw_mod_reg_rm_offset_ret:
-	pop cx
 	ret
 endp 
 
