@@ -2403,19 +2403,59 @@ handle_0010 proc
 	je _handle_0010_sgmch
 	; handle everything else
 	
-	handle_0010_ret:
+	; get _w
+	call get_w
+	; extract the first 4 bit
+	mov dl, al
+	and dl, 08h
+	shr dl, 03h
+	cmp dl, 01h					; dl == 1 -> sub, dl == 0 -> and
+	je _handle_0010_sub
+	
+	lea di, _and
+	jmp _handle_0010_sub_and
+	
+	_handle_0010_sub:
+		lea di, _sub
+	
+	_handle_0010_sub_and:
+	; move the command to buffer_out
+	call move_di_to_bx_scnd_byte
+	WHITE_SPACE_BUFFER_OUT
+	
+	; now extract second deciding byte
+	mov dl, al
+	and dl, 04h
+	shr dl, 02h
+	cmp dl, 00h					; dl == 0 -> dw_mod_reg_r/m_offset dl == 1 -> bojb bovb
+	je _handle_0010_dw_mod_reg_rm_offset
+
+	mov al, 00h
+	call mov_mod11_reg_to_bx
+	COMMA_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+	
+	call handle_bojb_bovb
+	jmp _handle_0010_ret
+
+	_handle_0010_dw_mod_reg_rm_offset:
+	call get_d
+	call handle_dw_mod_reg_rm_offset
+
+	
+	_handle_0010_ret:
 	call handle_buffer_out
 	ret 
 	
 	_handle_0010_daa:
 	lea di, _daa
 	call move_di_to_bx_scnd_byte
-	jmp handle_0010_ret
+	jmp _handle_0010_ret
 	
 	_handle_0010_das:
 	lea di, _das
 	call move_di_to_bx_scnd_byte
-	jmp handle_0010_ret
+	jmp _handle_0010_ret
 	
 	_handle_0010_sgmch:
 	and al, 018h
@@ -2424,7 +2464,7 @@ handle_0010 proc
 	mov byte ptr [bx], ':'
 	inc bx
 	inc [buffer_out_size]
-	jmp handle_0010_ret
+	jmp _handle_0010_ret
 	
 	
 endp
