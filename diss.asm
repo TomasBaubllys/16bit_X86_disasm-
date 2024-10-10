@@ -2346,17 +2346,24 @@ handle_1101_00 proc
 	; extract r/m
 	and al, 07h
 	call move_regmem_to_bx
-	
-	cmp [_v], 0 							; if _v == 0, shift by one bite _v == 1 shift by al 
-	je _handle_1101_00_ret
 	COMMA_BUFFER_OUT
 	WHITE_SPACE_BUFFER_OUT
+	
+	cmp [_v], 0 							; if _v == 0, shift by one bite _v == 1 shift by al 
+	je _handle_1101_00_mov_1
 	
 	; else move cl to buffer_out
 	lea di, _cl
 	mov cx, 02h
 	call move_cxdi_to_bx
-
+	jmp _handle_1101_00_ret
+	
+	; else move 1 to buffer_out
+	_handle_1101_00_mov_1:
+		mov byte ptr [bx], '1'
+		inc bx
+		inc [buffer_out_size]
+	
 	_handle_1101_00_ret:
 	ret
 endp
