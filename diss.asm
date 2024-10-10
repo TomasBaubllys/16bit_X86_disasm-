@@ -2064,13 +2064,8 @@ handle_0000 proc
 
 	; check if xydw or xy0w 
 	mov dl, al
-	mov cl, al
 	
-	and cl, 0Ch
-	cmp cl, 0Ch
-	je _handle_0000_xx0w
-	
-	and dl, 0Ch
+	and dl, 04h
 	cmp dl, 04h
 	je _handle_0000_xx0w
 
