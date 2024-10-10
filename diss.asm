@@ -171,8 +171,8 @@ JUMPS																		; for conditional long jumps
 			   _or db 01h, 03h, 'or'
 			  _adc db 02h, 04h, 'adc'
 			  _sbb db 03h, 04h, 'sbb'
-				   db 04h, 04h, 'and'
-				   db 05h, 04h, 'sub'
+			  _and db 04h, 04h, 'and'
+			  _sub db 05h, 04h, 'sub'
 				   db 06h, 04h, 'xor'
 				   db 07h, 04h, 'cmp'
 				   
@@ -195,6 +195,9 @@ JUMPS																		; for conditional long jumps
 					db 04h, 04h, 'shl'
 					db 05h, 04h, 'shr'
 					db 07h, 04h, 'sar'
+					
+	_daa db 07h, 04h, 'daa'
+	_das db 0Fh, 04h, 'das'
 							
 	_pop db 07h, 04h, 'pop'
  				
@@ -279,12 +282,19 @@ start:
 		cmp dl, 06h				; 000 0 0110
 		je handle_0000_l
 		
-		; check for 0001 first
 		cmp bl, 01h
 		je handle_0001_l
 		
+		mov dl, al
+		and dl, 0E7h
+		cmp dl, 26h
+		je handle_0010_l
+		
 		cmp bl, 0Bh
-		je	handle_1011_l	 
+		je	handle_1011_l	
+
+		cmp bl, 02h
+		je handle_0010_l
 
 		cmp bl, 07h
 		je handle_0111_l
@@ -323,6 +333,10 @@ start:
 		
 		handle_0001_l:
 		call handle_0001
+		jmp _continue_loop
+		
+		handle_0010_l:
+		call handle_0010
 		jmp _continue_loop
 		
 		handle_1011_l:
@@ -2366,6 +2380,53 @@ handle_1101_00 proc
 	
 	_handle_1101_00_ret:
 	ret
+endp
+
+; assuems the byte is in al IN THE WORKS
+handle_0010 proc
+	lea bx, buffer_out
+	call move_curr_address_buffer_out
+	
+	; check if it was daa or das
+	mov dl, al
+	and dl, 0Fh
+	
+	cmp dl, [_daa]
+	je _handle_0010_daa
+	
+	cmp dl, [_das]
+	je _handle_0010_das
+	
+	; check if it was 
+	and dl, 07h
+	cmp dl, 06h
+	je _handle_0010_sgmch
+	; handle everything else
+	
+	handle_0010_ret:
+	call handle_buffer_out
+	ret 
+	
+	_handle_0010_daa:
+	lea di, _daa
+	call move_di_to_bx_scnd_byte
+	jmp handle_0010_ret
+	
+	_handle_0010_das:
+	lea di, _das
+	call move_di_to_bx_scnd_byte
+	jmp handle_0010_ret
+	
+	_handle_0010_sgmch:
+	and al, 018h
+	shr al, 03h
+	call mov_sr_to_bx
+	mov byte ptr [bx], ':'
+	inc bx
+	inc [buffer_out_size]
+	jmp handle_0010_ret
+	
+	
 endp
 
 end start
