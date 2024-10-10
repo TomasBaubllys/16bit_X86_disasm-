@@ -59,10 +59,11 @@ JUMPS																		; for conditional long jumps
 	_w db ?
 	_mod db ?										; word because we need to push / pop sometimes (OPTIMZE LATER)
 	_s db ?
+	_v db ?
 	
 	; for mov reg, imm8/imm16
 	opcode_table_std_breg_nr db 00h, 'al'
-						db 01h, 'cl'
+					_cl db 01h, 'cl'
 						db 02h, 'dl'
 						db 03h, 'bl'
 						db 04h, 'ah'
@@ -70,7 +71,7 @@ JUMPS																		; for conditional long jumps
 						db 06h, 'dh'
 						db 07h, 'bh'
 	opcode_table_std_wreg_nr db 08h, 'ax'
-						db 09h, 'cx'
+					    db 09h, 'cx'
 						db 0Ah, 'dx'
 						db 0Bh, 'bx'
 						db 0Ch, 'sp'
@@ -181,11 +182,19 @@ JUMPS																		; for conditional long jumps
 							 db 05h, 06h, 'stosb'
 							 db 06h, 06h, 'lodsb'
 							 db 07h, 06h, 'scasb'
-							 
-		 opcode_1000_else_w db 02h, 05h, 'test'
-							db 03h, 05h, 'xchg'
-	  opcode_1000_else_no_w db 0Dh, 04h, 'lea'
-					        db 0Fh, 04h, 'pop'
+						 
+	 opcode_1000_else_w db 02h, 05h, 'test'
+						db 03h, 05h, 'xchg'
+	 opcode_1000_else_no_w db 0Dh, 04h, 'lea'
+					       db 0Fh, 04h, 'pop'
+						   
+	 opcode_1101_00 db 00h, 04h, 'rol'
+					db 01h, 04h, 'ror'
+					db 02h, 04h, 'rcl'
+					db 03h, 04h, 'rcr'
+					db 04h, 04h, 'shl'
+					db 05h, 04h, 'shr'
+					db 07h, 04h, 'sar'
 							
 	_pop db 07h, 04h, 'pop'
  				
@@ -289,6 +298,9 @@ start:
 		cmp bl, 0Ch
 		je handle_1100_l
 		
+		cmp bl, 0Dh
+		je handle_1101_l
+		
 		cmp bl, 0Fh
 		je handle_1111_l
 		
@@ -331,6 +343,10 @@ start:
 		
 		handle_1100_l:
 		call handle_1100
+		jmp _continue_loop
+		
+		handle_1101_l:
+		call handle_1101
 		jmp _continue_loop
 		
 		handle_0100_l:
@@ -515,6 +531,15 @@ get_d proc
 	and al, 02h
 	shr al, 1
 	mov byte ptr [_d], al
+	pop ax
+	ret
+endp
+
+get_v proc
+	push ax
+	and al, 02h
+	shr al, 1
+	mov byte ptr [_v], al
 	pop ax
 	ret
 endp
@@ -2261,5 +2286,79 @@ handle_dw_mod_reg_rm_offset proc
 	handle_dw_mod_reg_rm_offset_ret:
 	ret
 endp 
+
+; assumes the byte is in al
+handle_1101 proc
+	lea bx, buffer_out
+	
+	; move the current address to buffer_out
+	call move_curr_address_buffer_out
+
+	; extract id for 00
+	mov dl, al
+	and dl, 0Ch
+	shr dl, 02h
+	
+	cmp dl, 00h
+	je _handle_1101_00
+	
+	_handle_1101_exit:
+	call handle_buffer_out
+	ret 
+	
+	_handle_1101_00:
+	call handle_1101_00
+	jmp _handle_1101_exit
+		
+endp
+
+handle_1101_00 proc
+	; extract _w, _v
+	call get_w
+	call get_v
+
+	; move to the next byte
+	call handle_buffer_in
+	mov al, byte ptr [si]
+	
+	; extract _mod
+	call get_mod
+	
+	; extract the look up code
+	mov dl, al
+	shr dl, 03h
+	and dl, 07h
+	
+	lea di, opcode_1101_00
+	mov cx, OPC_1101_00_COUNT
+	_handle_1101_00_look_up:
+		cmp byte ptr [di], dl
+		je _handle_1101_00_opc_found
+		
+		call move_di_scnd_byte
+		loop _handle_1101_00_look_up
+	
+	_handle_1101_00_opc_found:
+	; move the function to buffer_out
+	call move_di_to_bx_scnd_byte
+	WHITE_SPACE_BUFFER_OUT
+
+	; extract r/m
+	and al, 07h
+	call move_regmem_to_bx
+	
+	cmp [_v], 0 							; if _v == 0, shift by one bite _v == 1 shift by al 
+	je _handle_1101_00_ret
+	COMMA_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+	
+	; else move cl to buffer_out
+	lea di, _cl
+	mov cx, 02h
+	call move_cxdi_to_bx
+
+	_handle_1101_00_ret:
+	ret
+endp
 
 end start
