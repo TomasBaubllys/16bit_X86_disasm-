@@ -72,7 +72,7 @@ JUMPS																		; for conditional long jumps
 						db 07h, 'bh'
 	opcode_table_std_wreg_nr db 08h, 'ax'
 					    db 09h, 'cx'
-						db 0Ah, 'dx'
+					_dx	db 0Ah, 'dx'
 						db 0Bh, 'bx'
 						db 0Ch, 'sp'
 						db 0Dh, 'bp'
@@ -201,6 +201,15 @@ JUMPS																		; for conditional long jumps
 						db 0Ch, 06h, 'int 3'
 						db 0Eh, 05h, 'into'
 						db 0Fh, 05h, 'iret'
+						
+	opcode_1110_be_0011 db 00h, 07h, 'loopne'
+					    db 01h, 06h, 'loope'
+						db 02h, 05h, 'loop'
+						db 03h, 05h, 'jcxz'
+				   _jmp db 0Bh, 04h, 'jmp'
+				   
+	_in db 00h, 03h, 'in'
+	_out db 01h, 04h, 'out'
 	
 	_aam db 04h, 04h, 'aam'
 	_aad db 05h, 04h, 'aad'
@@ -333,6 +342,9 @@ start:
 		cmp bl, 0Dh
 		je handle_1101_l
 		
+		cmp bl, 0Eh
+		je handle_1110_l
+		
 		cmp bl, 0Fh
 		je handle_1111_l
 		
@@ -395,6 +407,10 @@ start:
 		
 		handle_0101_l:
 		call handle_0101
+		jmp _continue_loop
+		
+		handle_1110_l:
+		call handle_1110
 		jmp _continue_loop
 		
 		handle_1111_l:
@@ -2721,4 +2737,147 @@ handle_0011 proc
 	
 endp
 
+; assumes the byte is in al
+handle_1110 proc
+	lea bx, buffer_out
+	
+	; load the current address
+	call move_curr_address_buffer_out
+	
+	; check if the lower 4 bits where <= 03h or == 0Bh (jmp)
+	mov dl, al
+	and dl, 0Fh
+	cmp dl, 03h
+	jbe _handle_1110_be_0011
+	
+	; maybe it was jump near
+	cmp dl, 0Bh
+	je _handle_1110_jmp_offset_near
+	
+	; check if it was in/out
+	and dl, 07h
+	shr dl, 1
+	cmp dl, 02h
+	je _handle_1110_io
+	
+	cmp dl, 03h
+	je _handle_1110_io
+	
+	_handle_1110_exit:
+	call handle_buffer_out
+	ret
+	
+	_handle_1110_be_0011:
+	call handle_1110_be_0011
+	jmp _handle_1110_exit
+	
+	_handle_1110_jmp_offset_near:
+	lea di, _jmp
+	call move_di_to_bx_scnd_byte
+	WHITE_SPACE_BUFFER_OUT
+	; read the offset (1 byte)
+	mov [_w], 0
+	call handle_bojb_bovb
+	jmp _handle_1110_exit
+	
+	_handle_1110_io:
+	call handle_1110_io
+	jmp _handle_1110_exit
+	
+endp
+
+handle_1110_be_0011 proc
+	mov cx, OPC_1110_be_0011_COUNT
+	lea di, opcode_1110_be_0011
+	
+	handle_1110_be_0011_look_up:
+		cmp byte ptr [di], dl
+		je _handle_1110_be_0011_opc_found
+		
+		call move_di_scnd_byte
+		loop handle_1110_be_0011_look_up
+		
+	
+	_handle_1110_be_0011_opc_found:
+	call move_di_to_bx_scnd_byte
+	WHITE_SPACE_BUFFER_OUT
+	; handle the offset byte
+	mov [_w], 0
+	call handle_bojb_bovb
+	ret
+endp
+
+; lower portion of dl is shifted by one
+handle_1110_io proc
+	cmp dl, 02h 			; dl == 02h -> in
+	je _handle_1110_io_in
+		lea di, _out
+		mov dl, 0FFh						; use as a flag to know it was out
+		jmp _handle_1110_io_cmd_done
+		
+	_handle_1110_io_in:
+		lea di, _in
+	
+	_handle_1110_io_cmd_done:
+	call move_di_to_bx_scnd_byte
+	WHITE_SPACE_BUFFER_OUT
+	
+	; handle out
+	cmp dl, 0FFh
+	je _handle_1110_io_out
+
+	; handle in
+	call get_w
+	
+	mov al, 00h
+	call mov_mod11_reg_to_bx
+	COMMA_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+		
+	; check if the port was provided
+	mov dl, byte ptr [si]
+	and dl, 08h
+	cmp dl, 08h							; if dl == 08h port == dx
+	je _handle_1110_io_in_dx
+		; handle the imm8 value
+		mov [_w], 0
+		call handle_bojb_bovb
+		jmp _handle_1110_io_exit
+	
+	_handle_1110_io_in_dx:
+		mov [_w], 1
+		mov al, [_dx]
+		and al, 07h
+		call mov_mod11_reg_to_bx
+		
+	_handle_1110_io_exit:
+	ret
+	
+	_handle_1110_io_out:
+		; check if the port was provided
+		mov dl, byte ptr [si]
+		and dl, 08h
+		cmp dl, 08h							; if dl == 08h port == dx
+		je _handle_1110_io_out_dx
+		
+			; handle the imm8 value
+			mov [_w], 0
+			call handle_bojb_bovb
+			jmp _handle_1110_io_out_ax
+		
+		_handle_1110_io_out_dx:
+			mov [_w], 1
+			mov al, [_dx]
+			and al, 07h
+			call mov_mod11_reg_to_bx
+	
+		; mov al or ax to buffer_out
+		_handle_1110_io_out_ax:
+		call get_w
+		COMMA_BUFFER_OUT
+		WHITE_SPACE_BUFFER_OUT
+		mov al, 00h
+		call mov_mod11_reg_to_bx
+		jmp _handle_1110_io_exit
+endp
 end start
