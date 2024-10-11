@@ -43,7 +43,7 @@ JUMPS																		; for conditional long jumps
 	byte_buffer db BYTE_BUFFER_LEN dup(?)
 	byte_buffer_iter dw ? 
 	
-	current_address dw 0000h
+	current_address dw 00FFh
 	
 	buffer_out_size db ?
 	buffer_out db BUFFER_OUT_LEN dup(?)
@@ -2496,7 +2496,44 @@ handle_1101 proc
 	jmp _handle_1101_exit
 	
 	_handle_1101_1xxx:
-	;;;;;;;;;;;;;;;;;
+	lea di, _esc
+	call move_di_to_bx_scnd_byte
+	WHITE_SPACE_BUFFER_OUT
+	
+	;extract the xxx yyy and move it to ax
+	mov cl, al
+	and cl, 07h											; extract xxx
+	
+	; move to the next byte 
+	call handle_buffer_in
+	mov al, byte ptr [si]
+	
+	; extract mod
+	call get_mod
+
+	; extract yyy
+	mov dl, al
+	and dl, 38h
+	
+	; join xxx and yyy into one
+	shr dl, 03h
+	xor dh, dh
+	xor ch, ch
+	shl cl, 03h
+	
+	; cl == 00xx x000, dl == 0000 0yyy
+	or cl, dl
+	mov al, cl
+	call mov_byte_hex_buffer_out
+	
+	COMMA_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+	
+	; extract the r/m
+	mov al, byte ptr [si]
+	and al, 07h
+	call move_regmem_to_bx
+	
 	jmp _handle_1101_exit
 	
 	_handle_1101_xx0x:
