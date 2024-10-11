@@ -1,68 +1,37 @@
-### Instructions Completed:
+### 8086 16-bit Disassembler
 
-- **MOV** (6 variants)
-- **INT** (all, except `int 03h`)
-- **Conditional Jumps** (all)
-- **1111 family** :
-  - `LOCK`
-  - `REPNZ/REPNE`
-  - `REP/REPZ/REPE`
-  - `HLT`
-  - `CMC`
-  - `TEST`
-  - `NOT`
-  - `NEG`
-  - `MUL`
-  - `IMUL`
-  - `DIV`
-  - `IDIV`
-  - `CLC`
-  - `STC`
-  - `STI`
-  - `CLD`
-  - `STD`
-  - `INC`
-  - `DEC`
-  - `CALL`
-  - `JMP`
-  - `PUSH`
-- **0100 family**:
-  - `INC`
-  - `DEC`
-  - `PUSH`
-  - `POP`
-- **1001 family**
-  - `NOP`
-  - `XCHG`
-  - `CBW`
-  - `CALL`
-  - `WAIT`
-  - `PUSHF`
-  - `POPF`
-  - `SAHF`
-  - `LAHF`
-- **1000 family**
-  - `ADD`
-  - `OR`
-  - `ADC`
-  - `SBB`
-  - `AND`
-  - `SUB`
-  - `XOR`
-  - `CMP`
-  - `TEST`
-  - `XCHG`
-  - `LEA`
-  - `POP`
-- **1010 family**
-  - `MOVSB/MOVSW`
-  - `CMPSB/CMPSW`
-  - `TEST`
-  - `STOSB/STOSW`
-  - `LODSB/LODSW`
-  - `SCASB/SCASW`
-- **00 family**
-  - `ADD(2)`
-  - `PUSH`
-  - `POP`
-  - `OR(2)`
+**Tested on DOSBox 0.74 using TASM**
+
+**How to compile using TASM:**
+
+tasm diss
+tlink diss
+
+**Usage example:**
+diss [destination.asm] [source.com]
+
+**Other functions:**
+diss /?
+
+**Notes:**
+- Works best with `.com` files.
+- Can be used with `.exe` files; however, the program does not skip the header, so expect garbage at the start of the file.
+
+**Commands that have not been tested:**
+- Jump (internal `imm16`)
+- Call (internal `imm16`)
+- Jump (external `imm16`)
+
+---
+
+### Todo:
+
+- Add `h` at the end of every file. []
+- Move segment change to the same line as the command. []
+- Move `rep` to the same line as the command. []
+- Fix most of the internal jump names. []
+- Fix the order of the procedures. []
+- Remove unnecessary code. []
+- Improve `.exe` file handling. []
+- Optimize lookups (make the tree higher). []
+
