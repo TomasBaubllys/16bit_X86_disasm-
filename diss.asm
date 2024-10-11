@@ -619,39 +619,70 @@ add_h proc
 	ret
 endp
 
-; expects current byte in al THIS NEEDS TO BE REDONE (brought up ot framework levels)
-handle_0111 proc
-	push cx ax bx
+; expects to al to be the reg and requires w, mod and bx to be pointer to buffer_out to be in bx
+move_regmem_to_bx proc
+	push cx
+	cmp  [_mod], 00
+	je _mod_00_l
 	
-	lea bx, buffer_out
-	call move_curr_address_buffer_out
+	cmp byte ptr [_mod], 03h
+	je _mod_11_l
 	
-	; find the coresponding conditional jump
-	and al, 0Fh
+	call mov_mod0110_reg_to_bx
 	
-	lea di, opcode_0111
-	mov cx, OPC_0111_COUNT
-	_handle_0111_look_up:
-		cmp byte ptr [di], al
-		je _handle_0111_continue
-		
-		call move_di_scnd_byte
-		
-		jmp _handle_0111_look_up
+	;; call mod0110
+	jmp _move_regmem_to_bx_exit
 	
-	; opcode found
-	_handle_0111_continue:
-	call move_di_to_bx_scnd_byte					; copy conditional jump call to buffer
+	_mod_00_l:
+	call mov_mod00_reg_to_bx
+	jmp _move_regmem_to_bx_exit
 	
-	;call handle_buffer_in							; check if we ran out of buffer_in
-	mov [_w], 0
-	call handle_bojb_bovb
+	_mod_11_l:
+	call mov_mod11_reg_to_bx
+	jmp _move_regmem_to_bx_exit
 	
-	call handle_buffer_out							; flush the buffer to stdout
-	
-	pop bx ax cx
-	ret
+	_move_regmem_to_bx_exit:
+	pop cx
+	ret 
 endp
+
+; assumes sr is in al
+mov_sr_to_bx proc
+	lea di, ds:[opcode_table_sr]
+	mov_sr_to_bx_look_up:
+		cmp al, byte ptr [di]
+		je mov_sr_to_bx_load_op
+		
+		add di, OPC_SR_NAME_LEN
+		
+		jmp mov_sr_to_bx_look_up
+	
+	; once we find it load it to bx
+	mov_sr_to_bx_load_op:
+	mov cx, OPC_SR_NAME_LEN - 1
+	call move_cxdi_to_bx	
+	ret
+endp 
+
+; expects bx -> buffer_out, di -> opc 'reg' on return cx -> bytes copied
+move_cxdi_to_bx proc 
+	push ds es cx di si
+	inc di										; move to the beginning of the opcode
+	mov ax, ds									; es == ds
+	mov es, ax
+
+	mov ax, di
+	mov di, bx
+	mov si, ax
+	
+	rep movsb
+		
+	pop si di cx es ds
+	
+	add bx, cx
+	add [buffer_out_size], cl
+	ret
+endp 
 
 ; moves di n times specified by di, -> val, n, val, ...
 move_di_scnd_byte proc
@@ -859,6 +890,20 @@ mov_word_hex_buffer_out proc
 	ret 
 
 endp
+
+handle_xjb_xvb proc
+	call handle_buffer_in
+	mov al, byte ptr [si]
+	call mov_byte_hex_buffer_out
+	
+	call handle_buffer_in
+	mov ah, byte ptr [si]
+	call mov_word_hex_buffer_out
+	
+	call add_h
+	
+	ret
+endp	
 	
 ; expects di to be pointer to the move command, bx buffer_out pointer, cx command_len
 move_command_to_bffr proc
@@ -873,40 +918,686 @@ move_command_to_bffr proc
 	pop ax
 	ret 
 endp 
+
+; needs [_w] to be set si -> buffer_in, bx -> buffer_out
+handle_bojb_bovb proc
+	cmp [_w], 0
+	je handle_bojb_bovb_skip
 	
-; assumes the byte is in al, si (buffer_in pointer) gets changed around must be played with carefully!!!
-handle_1011 proc
-	push cx ax bx
+	call handle_buffer_in
+	mov al, byte ptr [si]
+	call mov_byte_hex_buffer_out
+	
+	handle_bojb_bovb_skip:
+	call handle_buffer_in
+	mov al, byte ptr [si]
+	call mov_byte_hex_buffer_out
+	
+	cmp [_w], 1
+	jne handle_bojb_bovb_exit
+
+	call swap_last_4_packs_2
+	
+	handle_bojb_bovb_exit:
+	call add_h
+	
+	ret
+endp
+
+move_curr_address_buffer_out proc
+	push ax dx
+	mov ax, [current_address]
+	call mov_word_hex_buffer_out
+	mov byte ptr [bx], 'h'
+	inc bx
+	inc [buffer_out_size]
+	
+	COLON_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+	pop dx ax
+	
+	ret
+endp	
+
+; assumes byte is loaded to al _d, _w are set, moves to the needed byte itself
+handle_dw_mod_reg_rm_offset proc 
+	call handle_buffer_in
+	mov al, byte ptr [si]
+	mov cl, al
+	
+	call get_mod
+
+	cmp byte ptr [_d], 0
+	je _handle_dw_mod_reg_rm_offset_d0
+	
+	; extract reg and move it to buffer out
+	and al, 38h
+	shr al, 03h
+	call mov_mod11_reg_to_bx
+
+	COMMA_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+	
+	; extract the second byte and move it to buffer out
+	mov al, byte ptr [si]									; move from here since previuos called mod11 modifies cx
+	and al, 07h
+	call move_regmem_to_bx
+	jmp handle_dw_mod_reg_rm_offset_ret
+	
+	_handle_dw_mod_reg_rm_offset_d0:		
+		; extract rm and move it to buffer out
+		and al, 07h
+		call move_regmem_to_bx
+
+		COMMA_BUFFER_OUT
+		WHITE_SPACE_BUFFER_OUT
+		
+		; extract the reg byte and move it to buffer out
+		mov al, cl
+		and al, 38h
+		shr al, 3
+		call mov_mod11_reg_to_bx
+
+	handle_dw_mod_reg_rm_offset_ret:
+	ret
+endp 	
+
+handle_unknown proc
+	push cx dx
+	lea di, unknown_str
+	mov cx, unknown_str_len
+	call move_command_to_bffr
+	call handle_buffer_out
+	pop  dx cx
+	ret
+endp	
+
+; expects bx to be the first byte to write to, al to be the registers code
+mov_mod11_reg_to_bx proc 
+	; if w == 0 we need to load di with byte registers else load with word registers
+	cmp [_w], 0				
+	je _mov_mod11_reg_to_bx_w0
+	
+	lea di, opcode_table_std_wreg_nr
+	jmp _mov_mod11_reg_to_bx_look_up
+	
+	_mov_mod11_reg_to_bx_w0:
+	lea di, opcode_table_std_breg_nr
+	
+	; expects di to point to our opcode table
+	_mov_mod11_reg_to_bx_look_up:
+		mov cl, byte ptr [di]
+		and cl, 07h
+		cmp al, cl
+		je _load_op_mov_mod11_reg_to_bx
+		
+		add di, OPC_REG_NAME_LEN
+		jmp _mov_mod11_reg_to_bx_look_up
+		
+	_load_op_mov_mod11_reg_to_bx:
+	
+	xor ch, ch
+	mov cl, OPC_REG_NAME_LEN - 1						; -1 because first byte is the code so we need to copy one byte less					
+	
+	push ds es cx di si
+		inc di											; move to the beginning of the opcode
+		mov ax, ds										; es == ds
+		mov es, ax
+
+		mov ax, di
+		mov di, bx
+		mov si, ax
+		
+		rep movsb
+		
+	pop si di cx es ds
+	
+	; add to bx the ammount we moved
+	add bx, cx
+	add [buffer_out_size], cl
+	ret
+endp
+
+; expects bx to be the first byte to write to, al to be the registers code
+mov_mod00_reg_to_bx proc 
+	lea di, opcode_table_reg_mod00
+	
+	; expects di to point to our opcode table
+	_mov_mod00_reg_to_bx_look_up:
+		cmp al, byte ptr [di]
+		je _load_op_mov_mod00_reg_to_bx
+		call move_di_scnd_byte
+		jmp _mov_mod00_reg_to_bx_look_up
+		
+	_load_op_mov_mod00_reg_to_bx:
+	;; check if we had a direct adress
+	cmp byte ptr [di], 06h
+	je mov_mod00_reg_to_bx_dir_adrs
+	
+	call move_di_to_bx_scnd_byte
+	
+	SQRBR_R_BUFFER_OUT
+	
+	ret
+	
+	mov_mod00_reg_to_bx_dir_adrs:
+	push ax										; preserve the current byte
+	SQRBR_L_BUFFER_OUT							; add a square bracket [
+	
+	call handle_buffer_in
+	mov al,  byte ptr [si]
+	
+	call handle_buffer_in
+	mov ah,  byte ptr [si]
+	call mov_word_hex_buffer_out
+	
+	mov byte ptr [bx], 'h'
+	inc bx
+	inc [buffer_out_size]
+	
+	SQRBR_R_BUFFER_OUT
+	
+	pop ax
+	ret
+	
+endp
+	
+; expects bx to be the first byte to write to, al to be the registers code
+mov_mod0110_reg_to_bx proc 
+	lea di, opcode_table_reg_mod00
+	
+	; expects di to point to our opcode table
+	_mov_mod0110_reg_to_bx_look_up:
+		cmp al, byte ptr [di]
+		je _load_op_mov_mod0110_reg_to_bx
+		call move_di_scnd_byte
+		jmp _mov_mod0110_reg_to_bx_look_up
+		
+	_load_op_mov_mod0110_reg_to_bx:
+	;; check if we had a direct adress
+	cmp byte ptr [di], 06h
+	jne mov_mod0110_reg_to_bx_bp_skip
+	
+	lea di,	_bp_
+	
+	mov_mod0110_reg_to_bx_bp_skip:
+	call move_di_to_bx_scnd_byte
+	
+	WHITE_SPACE_BUFFER_OUT
+	PLUS_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+	
+	push ax										; preserve the current byte
+	
+	; if we need only one byte skip reading of one of the bytes
+	cmp [_mod], 01h
+	je	mov_mod0110_reg_to_bx_skip_byte
+	
+	mov di, 1									; set di to 1 as a flag to know if we need to swap bytes
+	
+	call handle_buffer_in
+	mov al,  byte ptr [si]
+	call mov_byte_hex_buffer_out
+	
+	mov_mod0110_reg_to_bx_skip_byte:
+	call handle_buffer_in
+	mov al,  byte ptr [si]
+	call mov_byte_hex_buffer_out
+	
+	cmp di, 1
+	jne mov_mod0110_reg_to_bx_swap_skip
+	
+	call swap_last_4_packs_2					; handle endian
+	
+	mov_mod0110_reg_to_bx_swap_skip:
+	mov byte ptr [bx], 'h'
+	inc bx
+	inc [buffer_out_size]
+	
+	SQRBR_R_BUFFER_OUT
+	
+	pop ax
+	ret
+	
+endp
+	
+; assumes the byte is in al
+handle_0000 proc
+	push cx
 	
 	lea bx, buffer_out
+
+	; mov current address into buffer out
+	call move_curr_address_buffer_out
 	
-	;call get_w
-	; extract mod
+	; check if it was either r110 or r111
+	mov dl, al
+	and dl, 07h
+	cmp dl, [_pop]
+	je _handle_0000_pop 
+
+	cmp dl, [_push]
+	je _handle_0000_push
+	
+	; handle others		
+	; get _w
+	call get_w
+
+	; check if xydw or xy0w 
+	mov dl, al
+	
+	and dl, 04h
+	cmp dl, 04h
+	je _handle_0000_xx0w
+
+	; else handle the last case
+	; load _d
+	call get_d
+	
+	; move the apropriate command to buffer out
+	and al, 08h
+	shr al, 03h
+	
+	cmp al, byte ptr [_or]
+	je _handle_0000_else_or
+	
+	lea di, opcode_1000_00
+	jmp _handle_0000_else_or_add
+	
+	_handle_0000_else_or:
+		lea di, _or
+		
+	_handle_0000_else_or_add:
+	call move_di_to_bx_scnd_byte
+	
+	WHITE_SPACE_BUFFER_OUT
+	
+	call handle_dw_mod_reg_rm_offset
+	
+	; exit
+	_handle_0000_exit:
+	call handle_buffer_out
+	pop cx
+	ret
+	
+	_handle_0000_pop:
+		lea di, _pop 
+		jmp _handle_0000_pop_push
+		
+	_handle_0000_push:
+		lea di, _push 
+	
+	_handle_0000_pop_push:
+		call move_di_to_bx_scnd_byte
+		
+		WHITE_SPACE_BUFFER_OUT
+		
+		; extract sr
+		and al, 18h
+		shr al, 3
+		call mov_sr_to_bx
+		jmp _handle_0000_exit
+		
+	_handle_0000_xx0w:
+		mov dl, al
+		and dl, 08h
+		shr dl, 3
+		cmp dl, byte ptr [_or]
+		je _handle_0000_xx0w_or
+		
+		; add is the first in the table
+		lea di, opcode_1000_00
+		jmp _handle_0000_xx0w_or_add
+		
+		_handle_0000_xx0w_or:
+		lea di, _or
+
+		_handle_0000_xx0w_or_add:
+		call move_di_to_bx_scnd_byte
+		
+		WHITE_SPACE_BUFFER_OUT
+		
+		; move acumulator to buffer_out
+		mov ax, 0000h
+		call mov_mod11_reg_to_bx
+		
+		COMMA_BUFFER_OUT
+		WHITE_SPACE_BUFFER_OUT
+		
+		call handle_bojb_bovb
+		
+		jmp _handle_0000_exit
+	
+endp	
+	
+; assumes the byte is in al
+handle_0001 proc
+	lea bx, buffer_out
+	; move address to buffer_out
+	call move_curr_address_buffer_out
+	
+	; read _w, _d
+	call get_w
+	call get_d
+	
+	; extract first deciding bit
 	mov dl, al
 	and dl, 08h
 	shr dl, 03h
-	mov byte ptr [_w], dl
 	
-	call move_curr_address_buffer_out
+	; move the commad to buffer out depending on the byte  0 == adc, 1 == sbb
+	cmp dl, 01h
+	je _handle_0001_sbb
+
+		lea di, _adc
+	jmp _handle_0001_after_command
 	
-	lea di, _mov
+	_handle_0001_sbb:
+		lea di, _sbb
+		
+	_handle_0001_after_command:
+	; move the command to buffer out
 	call move_di_to_bx_scnd_byte
 	WHITE_SPACE_BUFFER_OUT
 	
-	;mov al, byte ptr [si]										; mask to get the registers byte
-	and al, 07h
+	; extract the second deciding byte
+	mov dl, al
+	and dl, 04h
+	shr dl, 02h
+	
+	; dl == 0 dw_mod_reg_offset, dl == 1 bojb [bovb]
+	cmp dl, 01h
+	je _handle_0001_bojb_bovb
+	
+	call handle_dw_mod_reg_rm_offset
+	
+	jmp _handle_0001_ret
+	_handle_0001_bojb_bovb:
+		mov al, 00h
+		call mov_mod11_reg_to_bx
+		
+		COMMA_BUFFER_OUT
+		WHITE_SPACE_BUFFER_OUT
+		
+		call handle_bojb_bovb 
+
+	_handle_0001_ret:
+	call handle_buffer_out
+	ret
+endp
+	
+; assumes the byte is in al
+handle_0010 proc
+	lea bx, buffer_out
+	call move_curr_address_buffer_out
+	
+	; check if it was daa or das
+	mov dl, al
+	and dl, 0Fh
+	
+	cmp dl, [_daa]
+	je _handle_0010_daa
+	
+	cmp dl, [_das]
+	je _handle_0010_das
+	
+	; check if it was 
+	and dl, 07h
+	cmp dl, 06h
+	je _handle_0010_sgmch
+	; handle everything else
+	
+	; get _w
+	call get_w
+	; extract the first 4 bit
+	mov dl, al
+	and dl, 08h
+	shr dl, 03h
+	cmp dl, 01h					; dl == 1 -> sub, dl == 0 -> and
+	je _handle_0010_sub
+	
+	lea di, _and
+	jmp _handle_0010_sub_and
+	
+	_handle_0010_sub:
+		lea di, _sub
+	
+	_handle_0010_sub_and:
+	; move the command to buffer_out
+	call move_di_to_bx_scnd_byte
+	WHITE_SPACE_BUFFER_OUT
+	
+	; now extract second deciding byte
+	mov dl, al
+	and dl, 04h
+	shr dl, 02h
+	cmp dl, 00h					; dl == 0 -> dw_mod_reg_r/m_offset dl == 1 -> bojb bovb
+	je _handle_0010_dw_mod_reg_rm_offset
+
+	mov al, 00h
 	call mov_mod11_reg_to_bx
 	COMMA_BUFFER_OUT
 	WHITE_SPACE_BUFFER_OUT
 	
 	call handle_bojb_bovb
+	jmp _handle_0010_ret
+
+	_handle_0010_dw_mod_reg_rm_offset:
+	call get_d
+	call handle_dw_mod_reg_rm_offset
+
 	
-	_handle_1011_flush:
+	_handle_0010_ret:
 	call handle_buffer_out
+	ret 
+	
+	_handle_0010_daa:
+	lea di, _daa
+	call move_di_to_bx_scnd_byte
+	jmp _handle_0010_ret
+	
+	_handle_0010_das:
+	lea di, _das
+	call move_di_to_bx_scnd_byte
+	jmp _handle_0010_ret
+	
+	_handle_0010_sgmch:
+	and al, 018h
+	shr al, 03h
+	call mov_sr_to_bx
+	mov byte ptr [bx], ':'
+	inc bx
+	inc [buffer_out_size]
+	jmp _handle_0010_ret
+	
+endp
+	
+; assumes the byte is in al
+handle_0011 proc
+	lea bx, buffer_out
+	call move_curr_address_buffer_out
+	
+	; check if it was daa or das
+	mov dl, al
+	and dl, 0Fh
+	
+	cmp dl, [_aaa]
+	je _handle_0011_aaa
+	
+	cmp dl, [_aas]
+	je _handle_0011_aas ;;
+	; handle everything else
+	
+	; get _w
+	call get_w
+	; extract the first 4 bit
+	mov dl, al
+	and dl, 08h
+	shr dl, 03h
+	cmp dl, 01h					; dl == 1 -> cmp, dl == 0 -> xor
+	je _handle_0011_cmp
+	
+	lea di, _xor
+	jmp _handle_0011_xor_cmp
+	
+	_handle_0011_cmp:
+		lea di, _cmp
+	
+	_handle_0011_xor_cmp:
+	; move the command to buffer_out
+	call move_di_to_bx_scnd_byte
+	WHITE_SPACE_BUFFER_OUT
+	
+	; now extract second deciding byte
+	mov dl, al
+	and dl, 04h
+	shr dl, 02h
+	cmp dl, 00h					; dl == 0 -> dw_mod_reg_r/m_offset dl == 1 -> bojb bovb
+	je _handle_0011_dw_mod_reg_rm_offset
+
+	mov al, 00h
+	call mov_mod11_reg_to_bx
+	COMMA_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+	
+	call handle_bojb_bovb
+	jmp _handle_0011_ret
+
+	_handle_0011_dw_mod_reg_rm_offset:
+	call get_d
+	call handle_dw_mod_reg_rm_offset
+
+	
+	_handle_0011_ret:
+	call handle_buffer_out
+	ret 
+	
+	_handle_0011_aaa:
+	lea di, _aaa
+	call move_di_to_bx_scnd_byte
+	jmp _handle_0011_ret
+	
+	_handle_0011_aas:
+	lea di, _aas
+	call move_di_to_bx_scnd_byte
+	jmp _handle_0011_ret
+	
+endp	
+
+; assumes the byte is in al
+handle_0100 proc
+	; print the current adress
+	lea bx, buffer_out
+	
+	; mov current address into buffer out
+	call move_curr_address_buffer_out
+
+	; extract the look_up byte
+	mov dl, al
+	and dl, 08h
+	shr dl, 3
+	
+	lea di, opcode_0100
+	push cx 
+	mov cx, OPC_0100_COUNT
+	
+	_handle_0100_look_up:
+	cmp dl, byte ptr [di]
+	je _handle_0100_opc_found
+	
+	call move_di_scnd_byte
+	
+	loop _handle_0100_look_up
+	
+	_handle_0100_opc_found:
+	call move_di_to_bx_scnd_byte
+	WHITE_SPACE_BUFFER_OUT
+	
+	pop cx
+	mov [_w], 1
+	
+	; extract the byte
+	and al, 07h
+	call mov_mod11_reg_to_bx
+	
+	call handle_buffer_out
+	ret 
+endp
+
+; assumes the byte is in al
+handle_0101 proc
+	; print the current adress
+	lea bx, buffer_out
+	
+	; mov current address into buffer out
+    call move_curr_address_buffer_out
+
+	; extract the look_up byte
+	mov dl, al
+	and dl, 08h
+	shr dl, 3
+	
+	lea di, opcode_0101
+	push cx 
+	mov cx, OPC_0101_COUNT
+	
+	_handle_0101_look_up:
+	cmp dl, byte ptr [di]
+	je _handle_0101_opc_found
+	
+	call move_di_scnd_byte
+	
+	loop _handle_0101_look_up
+	
+	_handle_0101_opc_found:
+	call move_di_to_bx_scnd_byte
+	WHITE_SPACE_BUFFER_OUT
+	
+	pop cx
+	mov [_w], 1
+	
+	; extract the byte
+	and al, 07h
+	call mov_mod11_reg_to_bx
+
+	call handle_buffer_out
+	ret 
+endp	
+
+; expects current byte in al THIS NEEDS TO BE REDONE (brought up ot framework levels)
+handle_0111 proc
+	push cx ax bx
+	
+	lea bx, buffer_out
+	call move_curr_address_buffer_out
+	
+	; find the coresponding conditional jump
+	and al, 0Fh
+	
+	lea di, opcode_0111
+	mov cx, OPC_0111_COUNT
+	_handle_0111_look_up:
+		cmp byte ptr [di], al
+		je _handle_0111_continue
+		
+		call move_di_scnd_byte
+		
+		jmp _handle_0111_look_up
+	
+	; opcode found
+	_handle_0111_continue:
+	call move_di_to_bx_scnd_byte					; copy conditional jump call to buffer
+	
+	;call handle_buffer_in							; check if we ran out of buffer_in
+	mov [_w], 0
+	call handle_bojb_bovb
+	
+	call handle_buffer_out							; flush the buffer to stdout
+	
 	pop bx ax cx
 	ret
 endp	
-
+	
 ; assumes the byte is in al
 handle_1000 proc
 	push dx cx
@@ -1174,24 +1865,6 @@ handle_1000_11x0 proc
 	ret 
 endp
 
-; assumes sr is in al
-mov_sr_to_bx proc
-	lea di, ds:[opcode_table_sr]
-	mov_sr_to_bx_look_up:
-		cmp al, byte ptr [di]
-		je mov_sr_to_bx_load_op
-		
-		add di, OPC_SR_NAME_LEN
-		
-		jmp mov_sr_to_bx_look_up
-	
-	; once we find it load it to bx
-	mov_sr_to_bx_load_op:
-	mov cx, OPC_SR_NAME_LEN - 1
-	call move_cxdi_to_bx	
-	ret
-endp 
-
 ; handles mov reg <-> mem/reg
 handle_1000_10 proc
 	push cx dx
@@ -1302,181 +1975,100 @@ handle_1000_10 proc
 	ret
 endp
 
-; expects to al to be the reg and requires w, mod and bx to be pointer to buffer_out to be in bx
-move_regmem_to_bx proc
+; assumes the byte is in al
+handle_1001 proc
+	lea bx, buffer_out
+	
+	; mov current address into buffer out
+	call move_curr_address_buffer_out
+	
+	and al, 0Fh
+	
 	push cx
-	cmp  [_mod], 00
-	je _mod_00_l
+	lea di, opcode_1001
+	mov cx, OPC_1001_COUNT
+	handle_1001_look_up:
+		cmp byte ptr [di], al
+		je handle_1001_opc_found
+		
+		call move_di_scnd_byte
+		
+	loop handle_1001_look_up
+	handle_1001_opc_found:
+	call move_di_to_bx_scnd_byte
 	
-	cmp byte ptr [_mod], 03h
-	je _mod_11_l
+	cmp byte ptr [bx - 1], 'g'
+	je handle_1001_xchg
 	
-	call mov_mod0110_reg_to_bx
+	; check for 1001 1010 (call)
+	cmp al, 0Ah
+	jne handle_1001_exit
+	WHITE_SPACE_BUFFER_OUT
 	
-	;; call mod0110
-	jmp _move_regmem_to_bx_exit
+	; handle ajb avb
+	call handle_xjb_xvb
 	
-	_mod_00_l:
-	call mov_mod00_reg_to_bx
-	jmp _move_regmem_to_bx_exit
+	WHITE_SPACE_BUFFER_OUT
+	; handle srjb srvb 
+	call handle_xjb_xvb
 	
-	_mod_11_l:
-	call mov_mod11_reg_to_bx
-	jmp _move_regmem_to_bx_exit
+	handle_1001_exit:
 	
-	_move_regmem_to_bx_exit:
 	pop cx
-	ret 
-endp
-
-; expects bx to be the first byte to write to, al to be the registers code
-mov_mod11_reg_to_bx proc 
-	; if w == 0 we need to load di with byte registers else load with word registers
-	cmp [_w], 0				
-	je _mov_mod11_reg_to_bx_w0
+	call handle_buffer_out
+	ret
 	
-	lea di, opcode_table_std_wreg_nr
-	jmp _mov_mod11_reg_to_bx_look_up
-	
-	_mov_mod11_reg_to_bx_w0:
-	lea di, opcode_table_std_breg_nr
-	
-	; expects di to point to our opcode table
-	_mov_mod11_reg_to_bx_look_up:
-		mov cl, byte ptr [di]
-		and cl, 07h
-		cmp al, cl
-		je _load_op_mov_mod11_reg_to_bx
+	handle_1001_xchg:
+		WHITE_SPACE_BUFFER_OUT
+		mov al, byte ptr [si]
+		and al, 07h
+		mov [_w], 1
 		
-		add di, OPC_REG_NAME_LEN
-		jmp _mov_mod11_reg_to_bx_look_up
+		; move the first register to buffer_out
+		call mov_mod11_reg_to_bx 
 		
-	_load_op_mov_mod11_reg_to_bx:
-	
-	xor ch, ch
-	mov cl, OPC_REG_NAME_LEN - 1						; -1 because first byte is the code so we need to copy one byte less					
-	
-	push ds es cx di si
-		inc di											; move to the beginning of the opcode
-		mov ax, ds										; es == ds
-		mov es, ax
-
-		mov ax, di
-		mov di, bx
-		mov si, ax
+		COMMA_BUFFER_OUT
+		WHITE_SPACE_BUFFER_OUT
 		
-		rep movsb
-		
-	pop si di cx es ds
-	
-	; add to bx the ammount we moved
-	add bx, cx
-	add [buffer_out_size], cl
+		; move ax to buffer out
+		mov al, 00h
+		call mov_mod11_reg_to_bx
+		jmp handle_1001_exit
 	ret
 endp
 
-; expects bx to be the first byte to write to, al to be the registers code
-mov_mod00_reg_to_bx proc 
-	lea di, opcode_table_reg_mod00
+; assumes the byte is in al, si (buffer_in pointer) gets changed around must be played with carefully!!!
+handle_1011 proc
+	push cx ax bx
 	
-	; expects di to point to our opcode table
-	_mov_mod00_reg_to_bx_look_up:
-		cmp al, byte ptr [di]
-		je _load_op_mov_mod00_reg_to_bx
-		call move_di_scnd_byte
-		jmp _mov_mod00_reg_to_bx_look_up
-		
-	_load_op_mov_mod00_reg_to_bx:
-	;; check if we had a direct adress
-	cmp byte ptr [di], 06h
-	je mov_mod00_reg_to_bx_dir_adrs
+	lea bx, buffer_out
 	
+	;call get_w
+	; extract mod
+	mov dl, al
+	and dl, 08h
+	shr dl, 03h
+	mov byte ptr [_w], dl
+	
+	call move_curr_address_buffer_out
+	
+	lea di, _mov
 	call move_di_to_bx_scnd_byte
-	
-	SQRBR_R_BUFFER_OUT
-	
-	ret
-	
-	mov_mod00_reg_to_bx_dir_adrs:
-	push ax										; preserve the current byte
-	SQRBR_L_BUFFER_OUT							; add a square bracket [
-	
-	call handle_buffer_in
-	mov al,  byte ptr [si]
-	
-	call handle_buffer_in
-	mov ah,  byte ptr [si]
-	call mov_word_hex_buffer_out
-	
-	mov byte ptr [bx], 'h'
-	inc bx
-	inc [buffer_out_size]
-	
-	SQRBR_R_BUFFER_OUT
-	
-	pop ax
-	ret
-	
-endp
-	
-; expects bx to be the first byte to write to, al to be the registers code
-mov_mod0110_reg_to_bx proc 
-	lea di, opcode_table_reg_mod00
-	
-	; expects di to point to our opcode table
-	_mov_mod0110_reg_to_bx_look_up:
-		cmp al, byte ptr [di]
-		je _load_op_mov_mod0110_reg_to_bx
-		call move_di_scnd_byte
-		jmp _mov_mod0110_reg_to_bx_look_up
-		
-	_load_op_mov_mod0110_reg_to_bx:
-	;; check if we had a direct adress
-	cmp byte ptr [di], 06h
-	jne mov_mod0110_reg_to_bx_bp_skip
-	
-	lea di,	_bp_
-	
-	mov_mod0110_reg_to_bx_bp_skip:
-	call move_di_to_bx_scnd_byte
-	
-	WHITE_SPACE_BUFFER_OUT
-	PLUS_BUFFER_OUT
 	WHITE_SPACE_BUFFER_OUT
 	
-	push ax										; preserve the current byte
+	;mov al, byte ptr [si]										; mask to get the registers byte
+	and al, 07h
+	call mov_mod11_reg_to_bx
+	COMMA_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
 	
-	; if we need only one byte skip reading of one of the bytes
-	cmp [_mod], 01h
-	je	mov_mod0110_reg_to_bx_skip_byte
+	call handle_bojb_bovb
 	
-	mov di, 1									; set di to 1 as a flag to know if we need to swap bytes
-	
-	call handle_buffer_in
-	mov al,  byte ptr [si]
-	call mov_byte_hex_buffer_out
-	
-	mov_mod0110_reg_to_bx_skip_byte:
-	call handle_buffer_in
-	mov al,  byte ptr [si]
-	call mov_byte_hex_buffer_out
-	
-	cmp di, 1
-	jne mov_mod0110_reg_to_bx_swap_skip
-	
-	call swap_last_4_packs_2					; handle endian
-	
-	mov_mod0110_reg_to_bx_swap_skip:
-	mov byte ptr [bx], 'h'
-	inc bx
-	inc [buffer_out_size]
-	
-	SQRBR_R_BUFFER_OUT
-	
-	pop ax
+	_handle_1011_flush:
+	call handle_buffer_out
+	pop bx ax cx
 	ret
-	
-endp
+endp	
 
 ; assumes the byte is in al
 handle_1010 proc
@@ -1850,605 +2442,6 @@ handle_1100_011 proc
 	ret
 endp
 
-; needs [_w] to be set si -> buffer_in, bx -> buffer_out
-handle_bojb_bovb proc
-	cmp [_w], 0
-	je handle_bojb_bovb_skip
-	
-	call handle_buffer_in
-	mov al, byte ptr [si]
-	call mov_byte_hex_buffer_out
-	
-	handle_bojb_bovb_skip:
-	call handle_buffer_in
-	mov al, byte ptr [si]
-	call mov_byte_hex_buffer_out
-	
-	cmp [_w], 1
-	jne handle_bojb_bovb_exit
-
-	call swap_last_4_packs_2
-	
-	handle_bojb_bovb_exit:
-	call add_h
-	
-	ret
-endp
-
-handle_xjb_xvb proc
-	call handle_buffer_in
-	mov al, byte ptr [si]
-	call mov_byte_hex_buffer_out
-	
-	call handle_buffer_in
-	mov ah, byte ptr [si]
-	call mov_word_hex_buffer_out
-	
-	call add_h
-	
-	ret
-endp
-
-; expects bx -> buffer_out, di -> opc 'reg' on return cx -> bytes copied
-move_cxdi_to_bx proc 
-	push ds es cx di si
-	inc di										; move to the beginning of the opcode
-	mov ax, ds									; es == ds
-	mov es, ax
-
-	mov ax, di
-	mov di, bx
-	mov si, ax
-	
-	rep movsb
-		
-	pop si di cx es ds
-	
-	add bx, cx
-	add [buffer_out_size], cl
-	ret
-endp 
-
-handle_unknown proc
-	push cx dx
-	lea di, unknown_str
-	mov cx, unknown_str_len
-	call move_command_to_bffr
-	call handle_buffer_out
-	pop  dx cx
-	ret
-endp
-
-; assumes byte is in al
-handle_1111 proc
-	; load the adress
-	lea bx, buffer_out
-	
-	; mov current address into buffer out
-	call move_curr_address_buffer_out
-	
-	; extract [_w] will be usefull for half of the family functions
-	call get_w
-	
-	; check if the command id was 011
-	mov dl, al
-	and dl, 0Eh
-	shr dl, 1
-
-	cmp dl, 03h
-	je _handle_1111_011x_l
-	
-	cmp dl, 07h
-	je _handle_1111_111x_l
-	
-	call handle_1111_0000_to_0101_1000_to_1101
-	jmp _handle_1111_exit
-	
-	_handle_1111_011x_l:
-	call handle_1111_011x
-	jmp _handle_1111_exit
-	
-	_handle_1111_111x_l:
-	call handle_1111_111x
-	jmp _handle_1111_exit
-	
-	_handle_1111_exit:
-	
-	ret
-endp
-
-; assumes the byte is in al, bx -> buffer_out
-handle_1111_0000_to_0101_1000_to_1101 proc
-	mov al, byte ptr [si]
-	and al, 0Fh
-
-	lea di, opcode_1111_0000_to_0101_1000_to_1101
-	push cx
-	mov cx, OPC_1111_0000_TO_0101_1000_TO_1101_COUNT
-	_handle_1111_0000_to_0101_1000_to_1101_look_up:
-		cmp byte ptr [di], al
-		je _handle_1111_0000_to_0101_1000_to_1101_opc_found
-		
-		call move_di_scnd_byte
-		loop _handle_1111_0000_to_0101_1000_to_1101_look_up
-
-	_handle_1111_0000_to_0101_1000_to_1101_opc_found:
-	call move_di_to_bx_scnd_byte
-
-	call handle_buffer_out	
-		
-	pop cx
-	ret
-endp
-
-; assumes the byte is in al, bx -> buffer_out, _w is set
-handle_1111_011x proc
-	call handle_buffer_in
-	mov al, byte ptr [si]
-
-	; extract mod
-	call get_mod
-
-	; extract the look up bits and place them in al
-	mov dl, al
-	and dl, 38h
-	shr dl, 3
-	mov al, dl
-	
-	; save ax for later
-	push ax
-	
-	lea di, opcode_1111_011
-	push cx
-	mov cx, OPC_1111_011_COUNT
-	handle_1111_011x_look_up:
-		cmp byte ptr [di], al
-		je handle_1111_011x_opc_found
-		
-		call move_di_scnd_byte
-		loop handle_1111_011x_look_up
-	
-	handle_1111_011x_opc_found:
-	pop cx
-	; move the current operation name to buffer_out
-	call move_di_to_bx_scnd_byte
-	
-	; add a white space
-	WHITE_SPACE_BUFFER_OUT
-	
-	; extract r/m
-	mov al, byte ptr [si]
-	and al, 07h
-	
-	; move handle r/m
-	call move_regmem_to_bx
-	
-	; check if the call was TEST
-	pop ax
-	cmp al, 00h
-	jne _handle_1111_011x_exit
-	
-	COMMA_BUFFER_OUT
-	WHITE_SPACE_BUFFER_OUT
-	
-	call handle_bojb_bovb
-		
-	_handle_1111_011x_exit:
-	call handle_buffer_out
-	ret
-endp
-
-; assumes the byte is in al, bx 
-handle_1111_111x proc
-	call handle_buffer_in
-	mov al, byte ptr [si]
-	
-	; extract mod
-	call get_mod
-	
-	; look up bits
-	mov dl, al
-	and dl, 38h
-	shr dl, 3
-	
-	; load the look up table to di
-	lea di, opcode_1111_111
-	
-	push cx
-	mov cx, OPC_1111_111_COUNT
-
-	; start the search
-	_handle_1111_111x_look_up:
-		cmp dl, byte ptr [di]
-		je _handle_1111_111x_opc_found
-		
-		call move_di_scnd_byte
-	
-		loop _handle_1111_111x_look_up
-		
-	; add the command name to buffer_out
-	_handle_1111_111x_opc_found:
-	pop cx
-	call move_di_to_bx_scnd_byte
-	
-	WHITE_SPACE_BUFFER_OUT
-	
-	; extract r/m
-	mov al, byte ptr [si]
-	and al, 07h
-	
-	; move handle r/m
-	call move_regmem_to_bx
-
-	call handle_buffer_out
-	ret
-endp 
-
-; assumes the byte is in al
-handle_0100 proc
-	; print the current adress
-	lea bx, buffer_out
-	
-	; mov current address into buffer out
-	call move_curr_address_buffer_out
-
-	; extract the look_up byte
-	mov dl, al
-	and dl, 08h
-	shr dl, 3
-	
-	lea di, opcode_0100
-	push cx 
-	mov cx, OPC_0100_COUNT
-	
-	_handle_0100_look_up:
-	cmp dl, byte ptr [di]
-	je _handle_0100_opc_found
-	
-	call move_di_scnd_byte
-	
-	loop _handle_0100_look_up
-	
-	_handle_0100_opc_found:
-	call move_di_to_bx_scnd_byte
-	WHITE_SPACE_BUFFER_OUT
-	
-	pop cx
-	mov [_w], 1
-	
-	; extract the byte
-	and al, 07h
-	call mov_mod11_reg_to_bx
-	
-	call handle_buffer_out
-	ret 
-endp
-
-; assumes the byte is in al
-handle_0101 proc
-	; print the current adress
-	lea bx, buffer_out
-	
-	; mov current address into buffer out
-    call move_curr_address_buffer_out
-
-	; extract the look_up byte
-	mov dl, al
-	and dl, 08h
-	shr dl, 3
-	
-	lea di, opcode_0101
-	push cx 
-	mov cx, OPC_0101_COUNT
-	
-	_handle_0101_look_up:
-	cmp dl, byte ptr [di]
-	je _handle_0101_opc_found
-	
-	call move_di_scnd_byte
-	
-	loop _handle_0101_look_up
-	
-	_handle_0101_opc_found:
-	call move_di_to_bx_scnd_byte
-	WHITE_SPACE_BUFFER_OUT
-	
-	pop cx
-	mov [_w], 1
-	
-	; extract the byte
-	and al, 07h
-	call mov_mod11_reg_to_bx
-
-	call handle_buffer_out
-	ret 
-endp
-
-; assumes the byte is in al
-handle_1001 proc
-	lea bx, buffer_out
-	
-	; mov current address into buffer out
-	call move_curr_address_buffer_out
-	
-	and al, 0Fh
-	
-	push cx
-	lea di, opcode_1001
-	mov cx, OPC_1001_COUNT
-	handle_1001_look_up:
-		cmp byte ptr [di], al
-		je handle_1001_opc_found
-		
-		call move_di_scnd_byte
-		
-	loop handle_1001_look_up
-	handle_1001_opc_found:
-	call move_di_to_bx_scnd_byte
-	
-	cmp byte ptr [bx - 1], 'g'
-	je handle_1001_xchg
-	
-	; check for 1001 1010 (call)
-	cmp al, 0Ah
-	jne handle_1001_exit
-	WHITE_SPACE_BUFFER_OUT
-	
-	; handle ajb avb
-	call handle_xjb_xvb
-	
-	WHITE_SPACE_BUFFER_OUT
-	; handle srjb srvb 
-	call handle_xjb_xvb
-	
-	handle_1001_exit:
-	
-	pop cx
-	call handle_buffer_out
-	ret
-	
-	handle_1001_xchg:
-		WHITE_SPACE_BUFFER_OUT
-		mov al, byte ptr [si]
-		and al, 07h
-		mov [_w], 1
-		
-		; move the first register to buffer_out
-		call mov_mod11_reg_to_bx 
-		
-		COMMA_BUFFER_OUT
-		WHITE_SPACE_BUFFER_OUT
-		
-		; move ax to buffer out
-		mov al, 00h
-		call mov_mod11_reg_to_bx
-		jmp handle_1001_exit
-	ret
-endp
-
-; assumes the byte is in al
-handle_0000 proc
-	push cx
-	
-	lea bx, buffer_out
-
-	; mov current address into buffer out
-	call move_curr_address_buffer_out
-	
-	; check if it was either r110 or r111
-	mov dl, al
-	and dl, 07h
-	cmp dl, [_pop]
-	je _handle_0000_pop 
-
-	cmp dl, [_push]
-	je _handle_0000_push
-	
-	; handle others		
-	; get _w
-	call get_w
-
-	; check if xydw or xy0w 
-	mov dl, al
-	
-	and dl, 04h
-	cmp dl, 04h
-	je _handle_0000_xx0w
-
-	; else handle the last case
-	; load _d
-	call get_d
-	
-	; move the apropriate command to buffer out
-	and al, 08h
-	shr al, 03h
-	
-	cmp al, byte ptr [_or]
-	je _handle_0000_else_or
-	
-	lea di, opcode_1000_00
-	jmp _handle_0000_else_or_add
-	
-	_handle_0000_else_or:
-		lea di, _or
-		
-	_handle_0000_else_or_add:
-	call move_di_to_bx_scnd_byte
-	
-	WHITE_SPACE_BUFFER_OUT
-	
-	call handle_dw_mod_reg_rm_offset
-	
-	; exit
-	_handle_0000_exit:
-	call handle_buffer_out
-	pop cx
-	ret
-	
-	_handle_0000_pop:
-		lea di, _pop 
-		jmp _handle_0000_pop_push
-		
-	_handle_0000_push:
-		lea di, _push 
-	
-	_handle_0000_pop_push:
-		call move_di_to_bx_scnd_byte
-		
-		WHITE_SPACE_BUFFER_OUT
-		
-		; extract sr
-		and al, 18h
-		shr al, 3
-		call mov_sr_to_bx
-		jmp _handle_0000_exit
-		
-	_handle_0000_xx0w:
-		mov dl, al
-		and dl, 08h
-		shr dl, 3
-		cmp dl, byte ptr [_or]
-		je _handle_0000_xx0w_or
-		
-		; add is the first in the table
-		lea di, opcode_1000_00
-		jmp _handle_0000_xx0w_or_add
-		
-		_handle_0000_xx0w_or:
-		lea di, _or
-
-		_handle_0000_xx0w_or_add:
-		call move_di_to_bx_scnd_byte
-		
-		WHITE_SPACE_BUFFER_OUT
-		
-		; move acumulator to buffer_out
-		mov ax, 0000h
-		call mov_mod11_reg_to_bx
-		
-		COMMA_BUFFER_OUT
-		WHITE_SPACE_BUFFER_OUT
-		
-		call handle_bojb_bovb
-		
-		jmp _handle_0000_exit
-	
-endp
-
-; assumes the byte is in al
-handle_0001 proc
-	lea bx, buffer_out
-	; move address to buffer_out
-	call move_curr_address_buffer_out
-	
-	; read _w, _d
-	call get_w
-	call get_d
-	
-	; extract first deciding bit
-	mov dl, al
-	and dl, 08h
-	shr dl, 03h
-	
-	; move the commad to buffer out depending on the byte  0 == adc, 1 == sbb
-	cmp dl, 01h
-	je _handle_0001_sbb
-
-		lea di, _adc
-	jmp _handle_0001_after_command
-	
-	_handle_0001_sbb:
-		lea di, _sbb
-		
-	_handle_0001_after_command:
-	; move the command to buffer out
-	call move_di_to_bx_scnd_byte
-	WHITE_SPACE_BUFFER_OUT
-	
-	; extract the second deciding byte
-	mov dl, al
-	and dl, 04h
-	shr dl, 02h
-	
-	; dl == 0 dw_mod_reg_offset, dl == 1 bojb [bovb]
-	cmp dl, 01h
-	je _handle_0001_bojb_bovb
-	
-	call handle_dw_mod_reg_rm_offset
-	
-	jmp _handle_0001_ret
-	_handle_0001_bojb_bovb:
-		mov al, 00h
-		call mov_mod11_reg_to_bx
-		
-		COMMA_BUFFER_OUT
-		WHITE_SPACE_BUFFER_OUT
-		
-		call handle_bojb_bovb 
-
-	_handle_0001_ret:
-	call handle_buffer_out
-	ret
-endp
-
-move_curr_address_buffer_out proc
-	push ax dx
-	mov ax, [current_address]
-	call mov_word_hex_buffer_out
-	mov byte ptr [bx], 'h'
-	inc bx
-	inc [buffer_out_size]
-	
-	COLON_BUFFER_OUT
-	WHITE_SPACE_BUFFER_OUT
-	pop dx ax
-	
-	ret
-endp
-
-; assumes byte is loaded to al _d, _w are set, moves to the needed byte itself
-handle_dw_mod_reg_rm_offset proc 
-	call handle_buffer_in
-	mov al, byte ptr [si]
-	mov cl, al
-	
-	call get_mod
-
-	cmp byte ptr [_d], 0
-	je _handle_dw_mod_reg_rm_offset_d0
-	
-	; extract reg and move it to buffer out
-	and al, 38h
-	shr al, 03h
-	call mov_mod11_reg_to_bx
-
-	COMMA_BUFFER_OUT
-	WHITE_SPACE_BUFFER_OUT
-	
-	; extract the second byte and move it to buffer out
-	mov al, byte ptr [si]									; move from here since previuos called mod11 modifies cx
-	and al, 07h
-	call move_regmem_to_bx
-	jmp handle_dw_mod_reg_rm_offset_ret
-	
-	_handle_dw_mod_reg_rm_offset_d0:		
-		; extract rm and move it to buffer out
-		and al, 07h
-		call move_regmem_to_bx
-
-		COMMA_BUFFER_OUT
-		WHITE_SPACE_BUFFER_OUT
-		
-		; extract the reg byte and move it to buffer out
-		mov al, cl
-		and al, 38h
-		shr al, 3
-		call mov_mod11_reg_to_bx
-
-	handle_dw_mod_reg_rm_offset_ret:
-	ret
-endp 
-
 ; assumes the byte is in al
 handle_1101 proc
 	lea bx, buffer_out
@@ -2617,164 +2610,6 @@ handle_1101_00 proc
 	
 	_handle_1101_00_ret:
 	ret
-endp
-
-; assumes the byte is in al
-handle_0010 proc
-	lea bx, buffer_out
-	call move_curr_address_buffer_out
-	
-	; check if it was daa or das
-	mov dl, al
-	and dl, 0Fh
-	
-	cmp dl, [_daa]
-	je _handle_0010_daa
-	
-	cmp dl, [_das]
-	je _handle_0010_das
-	
-	; check if it was 
-	and dl, 07h
-	cmp dl, 06h
-	je _handle_0010_sgmch
-	; handle everything else
-	
-	; get _w
-	call get_w
-	; extract the first 4 bit
-	mov dl, al
-	and dl, 08h
-	shr dl, 03h
-	cmp dl, 01h					; dl == 1 -> sub, dl == 0 -> and
-	je _handle_0010_sub
-	
-	lea di, _and
-	jmp _handle_0010_sub_and
-	
-	_handle_0010_sub:
-		lea di, _sub
-	
-	_handle_0010_sub_and:
-	; move the command to buffer_out
-	call move_di_to_bx_scnd_byte
-	WHITE_SPACE_BUFFER_OUT
-	
-	; now extract second deciding byte
-	mov dl, al
-	and dl, 04h
-	shr dl, 02h
-	cmp dl, 00h					; dl == 0 -> dw_mod_reg_r/m_offset dl == 1 -> bojb bovb
-	je _handle_0010_dw_mod_reg_rm_offset
-
-	mov al, 00h
-	call mov_mod11_reg_to_bx
-	COMMA_BUFFER_OUT
-	WHITE_SPACE_BUFFER_OUT
-	
-	call handle_bojb_bovb
-	jmp _handle_0010_ret
-
-	_handle_0010_dw_mod_reg_rm_offset:
-	call get_d
-	call handle_dw_mod_reg_rm_offset
-
-	
-	_handle_0010_ret:
-	call handle_buffer_out
-	ret 
-	
-	_handle_0010_daa:
-	lea di, _daa
-	call move_di_to_bx_scnd_byte
-	jmp _handle_0010_ret
-	
-	_handle_0010_das:
-	lea di, _das
-	call move_di_to_bx_scnd_byte
-	jmp _handle_0010_ret
-	
-	_handle_0010_sgmch:
-	and al, 018h
-	shr al, 03h
-	call mov_sr_to_bx
-	mov byte ptr [bx], ':'
-	inc bx
-	inc [buffer_out_size]
-	jmp _handle_0010_ret
-	
-endp
-
-; assumes the byte is in al
-handle_0011 proc
-	lea bx, buffer_out
-	call move_curr_address_buffer_out
-	
-	; check if it was daa or das
-	mov dl, al
-	and dl, 0Fh
-	
-	cmp dl, [_aaa]
-	je _handle_0011_aaa
-	
-	cmp dl, [_aas]
-	je _handle_0011_aas ;;
-	; handle everything else
-	
-	; get _w
-	call get_w
-	; extract the first 4 bit
-	mov dl, al
-	and dl, 08h
-	shr dl, 03h
-	cmp dl, 01h					; dl == 1 -> cmp, dl == 0 -> xor
-	je _handle_0011_cmp
-	
-	lea di, _xor
-	jmp _handle_0011_xor_cmp
-	
-	_handle_0011_cmp:
-		lea di, _cmp
-	
-	_handle_0011_xor_cmp:
-	; move the command to buffer_out
-	call move_di_to_bx_scnd_byte
-	WHITE_SPACE_BUFFER_OUT
-	
-	; now extract second deciding byte
-	mov dl, al
-	and dl, 04h
-	shr dl, 02h
-	cmp dl, 00h					; dl == 0 -> dw_mod_reg_r/m_offset dl == 1 -> bojb bovb
-	je _handle_0011_dw_mod_reg_rm_offset
-
-	mov al, 00h
-	call mov_mod11_reg_to_bx
-	COMMA_BUFFER_OUT
-	WHITE_SPACE_BUFFER_OUT
-	
-	call handle_bojb_bovb
-	jmp _handle_0011_ret
-
-	_handle_0011_dw_mod_reg_rm_offset:
-	call get_d
-	call handle_dw_mod_reg_rm_offset
-
-	
-	_handle_0011_ret:
-	call handle_buffer_out
-	ret 
-	
-	_handle_0011_aaa:
-	lea di, _aaa
-	call move_di_to_bx_scnd_byte
-	jmp _handle_0011_ret
-	
-	_handle_0011_aas:
-	lea di, _aas
-	call move_di_to_bx_scnd_byte
-	jmp _handle_0011_ret
-	
 endp
 
 ; assumes the byte is in al
@@ -2948,4 +2783,170 @@ handle_1110_io proc
 		call mov_mod11_reg_to_bx
 		jmp _handle_1110_io_exit
 endp
+
+; assumes byte is in al
+handle_1111 proc
+	; load the adress
+	lea bx, buffer_out
+	
+	; mov current address into buffer out
+	call move_curr_address_buffer_out
+	
+	; extract [_w] will be usefull for half of the family functions
+	call get_w
+	
+	; check if the command id was 011
+	mov dl, al
+	and dl, 0Eh
+	shr dl, 1
+
+	cmp dl, 03h
+	je _handle_1111_011x_l
+	
+	cmp dl, 07h
+	je _handle_1111_111x_l
+	
+	call handle_1111_0000_to_0101_1000_to_1101
+	jmp _handle_1111_exit
+	
+	_handle_1111_011x_l:
+	call handle_1111_011x
+	jmp _handle_1111_exit
+	
+	_handle_1111_111x_l:
+	call handle_1111_111x
+	jmp _handle_1111_exit
+	
+	_handle_1111_exit:
+	
+	ret
+endp
+
+; assumes the byte is in al, bx -> buffer_out
+handle_1111_0000_to_0101_1000_to_1101 proc
+	mov al, byte ptr [si]
+	and al, 0Fh
+
+	lea di, opcode_1111_0000_to_0101_1000_to_1101
+	push cx
+	mov cx, OPC_1111_0000_TO_0101_1000_TO_1101_COUNT
+	_handle_1111_0000_to_0101_1000_to_1101_look_up:
+		cmp byte ptr [di], al
+		je _handle_1111_0000_to_0101_1000_to_1101_opc_found
+		
+		call move_di_scnd_byte
+		loop _handle_1111_0000_to_0101_1000_to_1101_look_up
+
+	_handle_1111_0000_to_0101_1000_to_1101_opc_found:
+	call move_di_to_bx_scnd_byte
+
+	call handle_buffer_out	
+		
+	pop cx
+	ret
+endp
+
+; assumes the byte is in al, bx -> buffer_out, _w is set
+handle_1111_011x proc
+	call handle_buffer_in
+	mov al, byte ptr [si]
+
+	; extract mod
+	call get_mod
+
+	; extract the look up bits and place them in al
+	mov dl, al
+	and dl, 38h
+	shr dl, 3
+	mov al, dl
+	
+	; save ax for later
+	push ax
+	
+	lea di, opcode_1111_011
+	push cx
+	mov cx, OPC_1111_011_COUNT
+	handle_1111_011x_look_up:
+		cmp byte ptr [di], al
+		je handle_1111_011x_opc_found
+		
+		call move_di_scnd_byte
+		loop handle_1111_011x_look_up
+	
+	handle_1111_011x_opc_found:
+	pop cx
+	; move the current operation name to buffer_out
+	call move_di_to_bx_scnd_byte
+	
+	; add a white space
+	WHITE_SPACE_BUFFER_OUT
+	
+	; extract r/m
+	mov al, byte ptr [si]
+	and al, 07h
+	
+	; move handle r/m
+	call move_regmem_to_bx
+	
+	; check if the call was TEST
+	pop ax
+	cmp al, 00h
+	jne _handle_1111_011x_exit
+	
+	COMMA_BUFFER_OUT
+	WHITE_SPACE_BUFFER_OUT
+	
+	call handle_bojb_bovb
+		
+	_handle_1111_011x_exit:
+	call handle_buffer_out
+	ret
+endp
+
+; assumes the byte is in al, bx 
+handle_1111_111x proc
+	call handle_buffer_in
+	mov al, byte ptr [si]
+	
+	; extract mod
+	call get_mod
+	
+	; look up bits
+	mov dl, al
+	and dl, 38h
+	shr dl, 3
+	
+	; load the look up table to di
+	lea di, opcode_1111_111
+	
+	push cx
+	mov cx, OPC_1111_111_COUNT
+
+	; start the search
+	_handle_1111_111x_look_up:
+		cmp dl, byte ptr [di]
+		je _handle_1111_111x_opc_found
+		
+		call move_di_scnd_byte
+	
+		loop _handle_1111_111x_look_up
+		
+	; add the command name to buffer_out
+	_handle_1111_111x_opc_found:
+	pop cx
+	call move_di_to_bx_scnd_byte
+	
+	WHITE_SPACE_BUFFER_OUT
+	
+	; extract r/m
+	mov al, byte ptr [si]
+	and al, 07h
+	
+	; move handle r/m
+	call move_regmem_to_bx
+
+	call handle_buffer_out
+	ret
+endp 
+
 end start
