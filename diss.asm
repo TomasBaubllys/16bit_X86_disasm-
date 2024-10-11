@@ -176,12 +176,12 @@ JUMPS																		; for conditional long jumps
 			  _xor db 06h, 04h, 'xor'
 			 _cmp db 07h, 04h, 'cmp'
 				   
-	opcode_1000_010x_to_111x db 02h, 06h, 'movsb'
-							 db 03h, 06h, 'cmpsb'
+	opcode_1000_010x_to_111x db 02h, 05h, 'movs' ; move b or w depending to the _w
+							 db 03h, 05h, 'cmps'
 							 db 04h, 05h, 'test'
-							 db 05h, 06h, 'stosb'
-							 db 06h, 06h, 'lodsb'
-							 db 07h, 06h, 'scasb'
+							 db 05h, 05h, 'stos'
+							 db 06h, 05h, 'lods'
+							 db 07h, 05h, 'scas'
 						 
 	 opcode_1000_else_w db 02h, 05h, 'test'
 						db 03h, 05h, 'xchg'
@@ -201,6 +201,14 @@ JUMPS																		; for conditional long jumps
 						db 0Ch, 06h, 'int 3'
 						db 0Eh, 05h, 'into'
 						db 0Fh, 05h, 'iret'
+	
+	_aam db 04h, 04h, 'aam'
+	_aad db 05h, 04h, 'aad'
+	_xlat db 07h, 05h, 'xlat'
+	_esc db 01h, 04h, 'esc'
+	
+	_les db 00h, 04h, 'les'
+	_lds db 01h, 04h, 'lds'
 					
 	_ret db 03h, 04h, 'ret'
 					
@@ -1535,23 +1543,41 @@ handle_1010_010x_111x proc
 	
 	; check if the command was test accum <-> inst
 	cmp byte ptr [bx - 1], 't'
-	jne _handle_1010_010x_111x_exit
+	je _handle_1010_010x_111x_test
 
-	WHITE_SPACE_BUFFER_OUT
 
-	xor ax, ax
-	call mov_mod11_reg_to_bx
+	; else add either w or b to the buffer out
+	cmp [_w], 0
+	je _handle_1010_010x_111x_add_b
+		mov byte ptr [bx], 'w'
+		jmp _handle_1010_010x_111x_add_bw
 	
-	COMMA_BUFFER_OUT
-	WHITE_SPACE_BUFFER_OUT
-	
-	call handle_bojb_bovb
+	_handle_1010_010x_111x_add_b:
+		mov byte ptr [bx], 'b'
+		
+	_handle_1010_010x_111x_add_bw:
+	inc bx
+	inc [buffer_out_size]
+		
 	
 	_handle_1010_010x_111x_exit:
 	call handle_buffer_out
 	
 	pop cx
 	ret 
+	
+	_handle_1010_010x_111x_test:
+		WHITE_SPACE_BUFFER_OUT
+
+		xor ax, ax
+		call mov_mod11_reg_to_bx
+	
+		COMMA_BUFFER_OUT
+		WHITE_SPACE_BUFFER_OUT
+	
+		call handle_bojb_bovb
+		jmp _handle_1010_010x_111x_exit
+	
 endp
 
 ; move ax <-> mem, assumes byte -> al, and bx -> buffer out, si -> buffer_in
@@ -1669,9 +1695,20 @@ handle_1100 proc
 	cmp dl, 03h
 	je _handle_1100_ret_l
 	
-	; else handle retf, int 3, into iret
+	; handle both les, lds
+	mov cl, al
+	shr cl, 1
+	and cl, 07h
+	cmp cl, 02h
+	je _handle_1100_010x_l
+	
+	; handle retf, int 3, into iret
 	cmp dl, 0Bh
 	jae _handle_1100_ae_1011_l
+	
+	; else the commands were either ret/retn bojb bovb or retf bojb bovb
+	call handle_1100_x010
+	jmp _handle_1100_exit
 	
 	; commands were not found
 	call handle_unknown
@@ -1694,8 +1731,61 @@ handle_1100 proc
 	call handle_1100_ae_1011
 	jmp _handle_1100_exit
 	
+	_handle_1100_010x_l:
+	call handle_1100_010x
+	jmp _handle_1100_exit
+	
 	_handle_1100_exit:
 	call handle_buffer_out
+	ret
+endp
+
+handle_1100_010x proc
+	; set imaginary _w and _d
+	mov [_d], 1
+	mov [_w], 1
+	
+	; load the appropriate command 
+	mov cl, al
+	and cl, 01h
+	cmp cl, 00h
+	je _handle_1100_010x_les
+		lea di, _lds
+
+	jmp _handle_1100_010x_exit
+	_handle_1100_010x_les:
+		lea di, _les
+	
+	_handle_1100_010x_exit:
+	call move_di_to_bx_scnd_byte
+	WHITE_SPACE_BUFFER_OUT
+	call handle_dw_mod_reg_rm_offset
+	
+	ret
+endp
+
+handle_1100_x010 proc
+	; move imaginary _w
+	mov [_w], 1
+
+	; extract the deciding byte 0000 x010 x == 0 ret/retn, x == 1 retf 
+	and al, 08h
+	shr al, 3
+	cmp al, 01h
+	je _handle_1100_x010_retf
+
+		lea di, _ret
+		jmp _handle_1100_x010_exit
+	
+	_handle_1100_x010_retf:
+		
+		; retf is the first opc
+		lea di, opcode_1100_ae_1011
+	
+	_handle_1100_x010_exit:
+	call move_di_to_bx_scnd_byte
+	WHITE_SPACE_BUFFER_OUT
+	call handle_bojb_bovb
 	ret
 endp
 
@@ -2364,6 +2454,22 @@ handle_1101 proc
 	cmp dl, 00h
 	je _handle_1101_00
 	
+	; extract t from 1101 txxx to check if the code was esc
+	shr dl, 1
+	cmp dl, 01h
+	je _handle_1101_1xxx
+	
+	; else compare 1101 xxtx if t == 0 its either aam or aad
+	mov dl, al
+	and dl, 02h
+	shr dl, 1
+	cmp dl, 00h
+	je _handle_1101_xx0x
+	
+	; else it xlat, handle it here and exit
+	lea di, _xlat
+	call move_di_to_bx_scnd_byte
+	
 	_handle_1101_exit:
 	call handle_buffer_out
 	ret 
@@ -2371,7 +2477,34 @@ handle_1101 proc
 	_handle_1101_00:
 	call handle_1101_00
 	jmp _handle_1101_exit
+	
+	_handle_1101_1xxx:
+	;;;;;;;;;;;;;;;;;
+	jmp _handle_1101_exit
+	
+	_handle_1101_xx0x:
+	call handle_1101_xx0x
+	; move si by one byte
+	call handle_buffer_in
+	jmp _handle_1101_exit
 		
+endp
+
+handle_1101_xx0x proc 
+	mov dl, al
+	and dl, 01h								; dl == 0 -> aam, dl == 1 -> aad
+	cmp dl, 01h
+	je _handle_1101_xx0x_aad
+	
+		lea di, _aam 
+		jmp _handle_1101_xx0x_exit
+		
+	_handle_1101_xx0x_aad:
+	lea di, _aad
+	
+	_handle_1101_xx0x_exit:
+	call move_di_to_bx_scnd_byte
+	ret 
 endp
 
 handle_1101_00 proc
