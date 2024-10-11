@@ -8,6 +8,7 @@
 ;;	> handle TEST 1111 family
 ;;	> Optimize opcode table use multiplication add, or, 0, adc
 ;;  > Change mov reg <- imm8/imm16 to utilize the framework 
+;;	> 1110 call, jmp, jmp remain untested
 
 
 .model small
@@ -131,7 +132,7 @@ JUMPS																		; for conditional long jumps
 					
 	opcode_1111_111 db 00h, 04h, 'inc'
 					db 01h, 04h, 'dec'
-					db 02h, 05h, 'call'
+			  _call db 02h, 05h, 'call'
 					db 03h, 05h, 'call'
 					db 04h, 04h, 'jmp'
 					db 05h, 04h, 'jmp'
@@ -665,7 +666,7 @@ endp
 
 ; moves di n - 1 bytes to bx, di -> val, n, val, ...
 move_di_to_bx_scnd_byte proc
-	push ds es ax si
+	push ds es ax si cx
 	mov cl, byte ptr [di + 1]
 	add di, 2
 	
@@ -686,7 +687,7 @@ move_di_to_bx_scnd_byte proc
 	add bx, cx								; preserve our original pointer to buffer_out
 	add [buffer_out_size], cl
 		
-	pop si ax es ds
+	pop cx si ax es ds
 	ret
 endp
 
@@ -2763,9 +2764,34 @@ handle_1110 proc
 	cmp dl, 03h
 	je _handle_1110_io
 	
+	; else its either call or jmp 
+	mov cl, al							;  save al for later
+	mov dl, al
+	cmp dl, 08h							; dl == 08 -> call					
+	je _handle_1110_call
+		lea di, _jmp
+		jmp _handle_1110_call_jmp
+	
+	_handle_1110_call:
+		lea di, _call
+
+	_handle_1110_call_jmp:
+		call move_di_to_bx_scnd_byte
+		WHITE_SPACE_BUFFER_OUT
+	
+	; either way read two bytes
+	call handle_xjb_xvb
+	
+	; check if two more bytes need to be read
+	and cl, 0003h
+	cmp cl, 02h
+	jne _handle_1110_exit
+	
+		call handle_xjb_xvb
+		
 	_handle_1110_exit:
-	call handle_buffer_out
-	ret
+		call handle_buffer_out
+		ret
 	
 	_handle_1110_be_0011:
 	call handle_1110_be_0011
