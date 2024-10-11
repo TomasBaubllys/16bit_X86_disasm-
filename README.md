@@ -26,7 +26,7 @@ diss [destination.asm] [source.com]
 
 ### Todo:
 
-- [ ] Add `h` at the end of every file.
+- [x] Add `h` at the end of every file.
 - [ ] Move segment change to the same line as the command. 
 - [ ] Move `rep` to the same line as the command. 
 - [ ] Fix most of the internal jump names. 

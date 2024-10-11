@@ -175,7 +175,7 @@ JUMPS																		; for conditional long jumps
 			  _and db 04h, 04h, 'and'
 			  _sub db 05h, 04h, 'sub'
 			  _xor db 06h, 04h, 'xor'
-			 _cmp db 07h, 04h, 'cmp'
+			  _cmp db 07h, 04h, 'cmp'
 				   
 	opcode_1000_010x_to_111x db 02h, 05h, 'movs' ; move b or w depending to the _w
 							 db 03h, 05h, 'cmps'
@@ -199,7 +199,7 @@ JUMPS																		; for conditional long jumps
 					
 					
 	opcode_1100_ae_1011 db 0Bh, 05h, 'retf'
-						db 0Ch, 06h, 'int 3'
+						db 0Ch, 08h, 'int 03h'
 						db 0Eh, 05h, 'into'
 						db 0Fh, 05h, 'iret'
 						
@@ -229,6 +229,8 @@ JUMPS																		; for conditional long jumps
 	_aas db 0Fh, 04h, 'aas'
 							
 	_pop db 07h, 04h, 'pop'
+	
+	_mov db 00h, 04h, 'mov'
  				
 	_bp_ db 00, 04h, '[bp' 
 				
@@ -610,15 +612,24 @@ get_w proc
 	ret
 endp
 
+add_h proc
+	mov byte ptr [bx], 'h'
+	inc bx
+	inc [buffer_out_size]
+	ret
+endp
+
 ; expects current byte in al THIS NEEDS TO BE REDONE (brought up ot framework levels)
 handle_0111 proc
 	push cx ax bx
+	
+	lea bx, buffer_out
+	call move_curr_address_buffer_out
 	
 	; find the coresponding conditional jump
 	and al, 0Fh
 	
 	lea di, opcode_0111
-	push cx
 	mov cx, OPC_0111_COUNT
 	_handle_0111_look_up:
 		cmp byte ptr [di], al
@@ -630,23 +641,11 @@ handle_0111 proc
 	
 	; opcode found
 	_handle_0111_continue:
-	pop cx
-	push di
-	lea bx, buffer_out
-	mov ax, [current_address]
-	
-	call mov_word_hex_buffer_out					; print the current address
-	
-	COLON_BUFFER_OUT								; sourceeeeee
-	WHITE_SPACE_BUFFER_OUT
-	
-	pop di
 	call move_di_to_bx_scnd_byte					; copy conditional jump call to buffer
 	
-	call handle_buffer_in							; check if we ran out of buffer_in
-	
-	mov al, byte ptr [si]	
-	call mov_byte_hex_buffer_out					; move the jump address to the buffer
+	;call handle_buffer_in							; check if we ran out of buffer_in
+	mov [_w], 0
+	call handle_bojb_bovb
 	
 	call handle_buffer_out							; flush the buffer to stdout
 	
@@ -879,49 +878,26 @@ endp
 handle_1011 proc
 	push cx ax bx
 	
-	and al, 0Fh											; mask to get the registers byte
-	xor ch, ch											; this is not needed if we are sure the value is B...h
-	mov cl, OPC_REG_COUNT				
-	lea di, ds:[opcode_table_std_breg_nr]				; load the beginning of our table
+	lea bx, buffer_out
 	
-	; look for the value in our opcode table
-	_handle_1011_look_up_reg:
-		cmp al, byte ptr [di]
-		je _handle_1011_reg_fnd							; if we find our value print it CHANGE THIS 
-
-		add di, OPC_REG_NAME_LEN						; move to the next element in our table
-		loop _handle_1011_look_up_reg					; loop until we find it
+	;call get_w
+	; extract mod
+	mov dl, al
+	and dl, 08h
+	shr dl, 03h
+	mov byte ptr [_w], dl
 	
-	_handle_1011_reg_fnd: 								; if we found the opcode print it
-
-	; copy_to_ouput_buffer
-	lea bx, buffer_out									; use bx as our iterator, saves a lot of moving around, but buffer_out_iter is still needed for parsing bytes individually
-	mov ax, [current_address]
+	call move_curr_address_buffer_out
 	
-	; move [address: ] to buffer_out
-	call mov_word_hex_buffer_out
-	COLON_BUFFER_OUT						
+	lea di, _mov
+	call move_di_to_bx_scnd_byte
 	WHITE_SPACE_BUFFER_OUT
 	
-	; move the command name [mov] to buffer_out
-	push di
-	lea di, mov_str
-	mov cx, mov_str_len
-	call move_command_to_bffr
-	pop di
-	
-	; move the registers name [ ax, ] to buffer_out 
-	mov cx, OPC_REG_NAME_LEN - 1
-	call move_cxdi_to_bx
-	
-	; add a comma and space
+	;mov al, byte ptr [si]										; mask to get the registers byte
+	and al, 07h
+	call mov_mod11_reg_to_bx
 	COMMA_BUFFER_OUT
 	WHITE_SPACE_BUFFER_OUT
-	
-	mov dl, byte ptr [di]
-	shr dl, 3
-	and dl, 01h
-	mov byte ptr [_w], dl
 	
 	call handle_bojb_bovb
 	
@@ -1427,13 +1403,14 @@ mov_mod00_reg_to_bx proc
 	
 	call handle_buffer_in
 	mov al,  byte ptr [si]
-	call mov_byte_hex_buffer_out
 	
 	call handle_buffer_in
-	mov al,  byte ptr [si]
-	call mov_byte_hex_buffer_out
+	mov ah,  byte ptr [si]
+	call mov_word_hex_buffer_out
 	
-	call swap_last_4_packs_2					; handle endian
+	mov byte ptr [bx], 'h'
+	inc bx
+	inc [buffer_out_size]
 	
 	SQRBR_R_BUFFER_OUT
 	
@@ -1490,6 +1467,9 @@ mov_mod0110_reg_to_bx proc
 	call swap_last_4_packs_2					; handle endian
 	
 	mov_mod0110_reg_to_bx_swap_skip:
+	mov byte ptr [bx], 'h'
+	inc bx
+	inc [buffer_out_size]
 	
 	SQRBR_R_BUFFER_OUT
 	
@@ -1831,6 +1811,10 @@ handle_1100_1101 proc
 	mov al, byte ptr [si]
 	call mov_byte_hex_buffer_out
 	
+	mov byte ptr [bx], 'h'
+	inc bx
+	inc [buffer_out_size]
+	
 	ret	
 endp
 
@@ -1886,6 +1870,8 @@ handle_bojb_bovb proc
 	call swap_last_4_packs_2
 	
 	handle_bojb_bovb_exit:
+	call add_h
+	
 	ret
 endp
 
@@ -1897,6 +1883,8 @@ handle_xjb_xvb proc
 	call handle_buffer_in
 	mov ah, byte ptr [si]
 	call mov_word_hex_buffer_out
+	
+	call add_h
 	
 	ret
 endp
@@ -2407,6 +2395,10 @@ move_curr_address_buffer_out proc
 	push ax dx
 	mov ax, [current_address]
 	call mov_word_hex_buffer_out
+	mov byte ptr [bx], 'h'
+	inc bx
+	inc [buffer_out_size]
+	
 	COLON_BUFFER_OUT
 	WHITE_SPACE_BUFFER_OUT
 	pop dx ax
@@ -2526,6 +2518,9 @@ handle_1101 proc
 	or cl, dl
 	mov al, cl
 	call mov_byte_hex_buffer_out
+	mov byte ptr [bx], 'h'
+	inc bx
+	inc [buffer_out_size]
 	
 	COMMA_BUFFER_OUT
 	WHITE_SPACE_BUFFER_OUT
@@ -2610,7 +2605,13 @@ handle_1101_00 proc
 	
 	; else move 1 to buffer_out
 	_handle_1101_00_mov_1:
+		mov byte ptr [bx], '0'
+		inc bx
+		inc [buffer_out_size]
 		mov byte ptr [bx], '1'
+		inc bx
+		inc [buffer_out_size]
+		mov byte ptr [bx], 'h'
 		inc bx
 		inc [buffer_out_size]
 	

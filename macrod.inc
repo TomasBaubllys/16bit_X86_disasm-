@@ -38,12 +38,12 @@ OPC_1111_111_COUNT = 07h
 ;; input buffer
 BUFFER_IN_LEN = 255
 
-BYTE_BUFFER_LEN = 0Dh
+BYTE_BUFFER_LEN = 0Eh
 
 ;; output buffer
 BUFFER_OUT_LEN = 20h
 
-;; standart .code start
+;; standart .code start for exe
 STD_ADDRESS_START = 200h
 
 HELP_LENGTH = 03h               ; " /?"

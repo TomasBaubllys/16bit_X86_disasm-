@@ -25,7 +25,7 @@ handle_buffer_out proc
 	NEW_LINE_BUFFER_OUT
 	push ax cx dx
 		; print the adress from buffer out 
-		mov cl, 06h                  
+		mov cl, 07h                  
 		mov bx, [output_file_handle] 
 		lea dx, buffer_out
 		mov ah, 40h
@@ -34,6 +34,9 @@ handle_buffer_out proc
 	
 		;; print the bytes that were decoded
 		mov bx, [byte_buffer_iter]
+		mov byte ptr [bx], 'h'
+		inc bx
+		inc [byte_buffer_size]
 		call fill_byte_buffer
 		mov cl, BYTE_BUFFER_LEN ;[byte_buffer_size]
 		lea dx, byte_buffer
@@ -44,9 +47,9 @@ handle_buffer_out proc
 		
 		; print rest of the buffer
 		mov cl, [buffer_out_size]
-		sub cl, 06h
+		sub cl, 07h
 		mov bx, [output_file_handle] ; 0001h
-		lea dx, buffer_out + 06h
+		lea dx, buffer_out + 07h
 		mov ah, 40h
 		int 21h
 		
