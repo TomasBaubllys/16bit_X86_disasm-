@@ -11,7 +11,7 @@ tlink diss
 diss [destination.asm] [source.com]
 
 **Other functions:**
-diss /?
+- diss /? - help menu
 
 **Notes:**
 - Works best with `.com` files.
