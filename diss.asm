@@ -305,7 +305,7 @@ start:
 		cmp bl, 00h
 		je handle_0000_l
 		
-		; check for 000s
+		; check for 000s special cases need to be handle here
 		mov dl, al
 		and dl, 0E6h			; 1110 0110
 		cmp dl, 06h				; 000 0 0110
@@ -319,14 +319,17 @@ start:
 		cmp dl, 26h
 		je handle_0010_l
 		
+		cmp bl, 02h
+		je handle_0010_l
+		
 		cmp bl, 03h
 		je handle_0011_l
 		
-		cmp bl, 0Bh
-		je	handle_1011_l	
-
-		cmp bl, 02h
-		je handle_0010_l
+		cmp bl, 04h
+		je handle_0100_l
+		
+		cmp bl, 05h 
+		je handle_0101_l
 
 		cmp bl, 07h
 		je handle_0111_l
@@ -334,8 +337,14 @@ start:
 		cmp bl, 08h
 		je handle_1000_l
 		
+		cmp bl, 09h
+		je handle_1001_l
+		
 		cmp bl, 0Ah
 		je handle_1010_l
+		
+		cmp bl, 0Bh
+		je	handle_1011_l	
 		
 		cmp bl, 0Ch
 		je handle_1100_l
@@ -348,15 +357,6 @@ start:
 		
 		cmp bl, 0Fh
 		je handle_1111_l
-		
-		cmp bl, 04h
-		je handle_0100_l
-		
-		cmp bl, 05h 
-		je handle_0101_l
-		
-		cmp bl, 09h
-		je handle_1001_l
 		
 		lea bx, buffer_out
 		call handle_unknown
@@ -378,8 +378,12 @@ start:
 		call handle_0011
 		jmp _continue_loop
 		
-		handle_1011_l:
-		call handle_1011
+		handle_0100_l:
+		call handle_0100
+		jmp _continue_loop
+		
+		handle_0101_l:
+		call handle_0101
 		jmp _continue_loop
 		
 		handle_0111_l:
@@ -390,8 +394,16 @@ start:
 		call handle_1000
 		jmp _continue_loop
 		
+		handle_1001_l:
+		call handle_1001
+		jmp _continue_loop
+		
 		handle_1010_l:
 		call handle_1010
+		jmp _continue_loop
+		
+		handle_1011_l:
+		call handle_1011
 		jmp _continue_loop
 		
 		handle_1100_l:
@@ -402,14 +414,6 @@ start:
 		call handle_1101
 		jmp _continue_loop
 		
-		handle_0100_l:
-		call handle_0100
-		jmp _continue_loop
-		
-		handle_0101_l:
-		call handle_0101
-		jmp _continue_loop
-		
 		handle_1110_l:
 		call handle_1110
 		jmp _continue_loop
@@ -417,9 +421,6 @@ start:
 		handle_1111_l:
 		call handle_1111
 		jmp _continue_loop
-		
-		handle_1001_l:
-		call handle_1001
 		
 		_continue_loop:
 			call handle_buffer_in
