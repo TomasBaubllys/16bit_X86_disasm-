@@ -26,12 +26,12 @@ diss /?
 
 ### Todo:
 
-- [ ] Add `h` at the end of every file.
-- [ ] Move segment change to the same line as the command. 
-- [ ] Move `rep` to the same line as the command. 
-- [ ] Fix most of the internal jump names. 
-- [ ] Fix the order of the procedures. 
-- [ ] Remove unnecessary code. 
-- [ ] Improve `.exe` file handling. 
-- [ ] Optimize lookups (make the tree higher). 
+- Add `h` at the end of every file. - [ ]
+- Move segment change to the same line as the command. - [ ] 
+- Move `rep` to the same line as the command. - [ ]
+- Fix most of the internal jump names. - [ ]
+- Fix the order of the procedures. - [ ]
+- Remove unnecessary code. - [ ]
+- Improve `.exe` file handling. - [ ]
+- Optimize lookups (make the tree higher). - [ ] 
 
