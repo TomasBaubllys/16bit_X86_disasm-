@@ -196,6 +196,14 @@ JUMPS																		; for conditional long jumps
 					db 05h, 04h, 'shr'
 					db 07h, 04h, 'sar'
 					
+					
+	opcode_1100_ae_1011 db 0Bh, 05h, 'retf'
+						db 0Ch, 06h, 'int 3'
+						db 0Eh, 05h, 'into'
+						db 0Fh, 05h, 'iret'
+					
+	_ret db 03h, 04h, 'ret'
+					
 	_daa db 07h, 04h, 'daa'
 	_das db 0Fh, 04h, 'das'
 	
@@ -1639,8 +1647,6 @@ endp
 
 ; expects the byte in al
 handle_1100 proc
-	mov dl, al					; save ax for now
-	
 	; load the adress
 	lea bx, buffer_out
 	
@@ -1650,27 +1656,61 @@ handle_1100 proc
 	mov dl, al
 	and dl, 0Eh
 	cmp dl, 06h
-	je handle_1100_011_l
+	je _handle_1100_011_l
 	
-	; handle full xxxx bytes
+	; handle full check if the command was int [num]
 	mov dl, al
 	and dl, 0Fh
+	
 	cmp dl, 0Dh
-	je handle_1100_1101_l
+	je _handle_1100_1101_l
+	
+	; check if the command was ret
+	cmp dl, 03h
+	je _handle_1100_ret_l
+	
+	; else handle retf, int 3, into iret
+	cmp dl, 0Bh
+	jae _handle_1100_ae_1011_l
 	
 	; commands were not found
 	call handle_unknown
-	jmp handle_1100_ret
+	jmp _handle_1100_exit
 	
-	handle_1100_011_l:
+	_handle_1100_011_l:
 	call handle_1100_011
-	jmp handle_1100_ret
+	jmp _handle_1100_exit
 	
-	handle_1100_1101_l:
+	_handle_1100_1101_l:
 	call handle_1100_1101
-	jmp handle_1100_ret
+	jmp _handle_1100_exit
 	
-	handle_1100_ret:
+	_handle_1100_ret_l:
+	lea di, _ret
+	call move_di_to_bx_scnd_byte
+	jmp _handle_1100_exit
+	
+	_handle_1100_ae_1011_l:
+	call handle_1100_ae_1011
+	jmp _handle_1100_exit
+	
+	_handle_1100_exit:
+	call handle_buffer_out
+	ret
+endp
+
+handle_1100_ae_1011 proc
+	lea di, opcode_1100_ae_1011
+	mov cx, OPC_1100_AE_1011_COUNT
+	_handle_1100_ae_1011_look_up:
+		cmp dl, byte ptr [di]
+		je _handle_1100_ae_1011_opc_found
+		
+		call move_di_scnd_byte
+		loop _handle_1100_ae_1011_look_up
+		
+	_handle_1100_ae_1011_opc_found:
+	call move_di_to_bx_scnd_byte
 	ret
 endp
 
@@ -1683,7 +1723,6 @@ handle_1100_1101 proc
 	mov al, byte ptr [si]
 	call mov_byte_hex_buffer_out
 	
-	call handle_buffer_out
 	ret	
 endp
 
@@ -1716,7 +1755,6 @@ handle_1100_011 proc
 	call handle_bojb_bovb
 	
 	handle_1100_011_exit:
-	call handle_buffer_out
 	ret
 endp
 
