@@ -2919,6 +2919,7 @@ handle_1110_io proc
 	_handle_1110_io_out:
 		; check if the port was provided
 		mov dl, byte ptr [si]
+		push dx
 		and dl, 08h
 		cmp dl, 08h							; if dl == 08h port == dx
 		je _handle_1110_io_out_dx
@@ -2936,6 +2937,8 @@ handle_1110_io proc
 	
 		; mov al or ax to buffer_out
 		_handle_1110_io_out_ax:
+		pop dx
+		mov al, dl
 		call get_w
 		COMMA_BUFFER_OUT
 		WHITE_SPACE_BUFFER_OUT
