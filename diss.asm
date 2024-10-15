@@ -2,15 +2,6 @@
 ; Užduoties sąlyga: dissssss
 ; Atliko: Tomas Baublys 
 
-;; TODO :
-;; 	> handle rep better
-;;	> Optimize
-;;	> handle TEST 1111 family
-;;	> Optimize opcode table use multiplication add, or, 0, adc
-;;  > Change mov reg <- imm8/imm16 to utilize the framework 
-;;	> 1110 call, jmp, jmp remain untested
-
-
 .model small
 .stack 100h
 
@@ -569,7 +560,7 @@ read_filename proc
 		
 		inc cx
 		
-		cmp cx, 10h
+		cmp cx, 10h						; user played too much 
 		ja exit_to_dos
 		
 		cmp	byte ptr ds:[si], ' '		; if not white spaces, continue reading
