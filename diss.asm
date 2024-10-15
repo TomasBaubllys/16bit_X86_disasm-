@@ -1716,6 +1716,9 @@ handle_1000_00 proc
 	
 	_handle_1000_00_move_bytes:
 	call mov_word_hex_buffer_out
+	mov byte ptr [bx], 'h'
+	inc bx
+	inc [buffer_out_size]
 
 	_handle_1000_00_exit:
 
