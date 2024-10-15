@@ -560,17 +560,24 @@ skip_spaces proc
 endp
 
 read_filename proc
-	push	ax
+	push	ax cx
 	call	skip_spaces
+	mov cx, 0
 	read_filename_start:
 		cmp	byte ptr ds:[si], 13		; compare with a new line
 		je	read_filename_end			; if yes we are done
+		
+		inc cx
+		
+		cmp cx, 10h
+		ja exit_to_dos
+		
 		cmp	byte ptr ds:[si], ' '		; if not white spaces, continue reading
 		jne	read_filename_next			
 	read_filename_end:
-		mov	al, '$'						; write $ to the end
+		mov	al, 0						; write 0 to the end
 		stosb                           ; Store AL at address ES:(E)DI, di = di + 1
-		pop	ax
+		pop	cx ax
 		ret
 	read_filename_next:
 		lodsb							; mov ds:si -> al
