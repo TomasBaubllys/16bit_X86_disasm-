@@ -8,7 +8,7 @@ tasm diss
 tlink diss
 
 **Usage example:**
-diss [destination.asm] [source.com]
+diss destination.asm source.com (source.exe) 
 
 **Other functions:**
 - diss /? - help menu
