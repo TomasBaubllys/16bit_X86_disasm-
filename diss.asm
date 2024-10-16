@@ -248,7 +248,7 @@ start:
 
 	lea di, es:[output_file]
 	call read_filename
-	cmp byte ptr es:[output_file], '$'								; if the files name was empty print help msg
+	cmp byte ptr es:[output_file], 0								; if the files name was empty print help msg
 	je help 						
 	
 	lea di, input_file
@@ -560,7 +560,7 @@ read_filename proc
 		
 		inc cx
 		
-		cmp cx, 10h						; user played too much 
+		cmp cx, 0Dh						; user played too much (figure out the exact value?HUH?)
 		ja exit_to_dos
 		
 		cmp	byte ptr ds:[si], ' '		; if not white spaces, continue reading
