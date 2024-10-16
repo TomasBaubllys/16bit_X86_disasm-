@@ -262,14 +262,13 @@ start:
 	mov dx, offset byte_buffer
 	mov ds:[byte_buffer_iter], dx 	
 	
-	; open file name
+	; open file name ?close the handle, open for writing seperately?
 	lea dx,  ds:[output_file]
 	mov ax, 3C00h
 	mov cx, 00h
 	int 21h
 	jc cannot_open_dest_file_err
 	mov ds:[output_file_handle], ax
-
 
 	; open the file
 	mov ah, 3Dh
