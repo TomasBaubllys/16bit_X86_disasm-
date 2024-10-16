@@ -39,7 +39,7 @@ JUMPS																		; for conditional long jumps
 	buffer_out_size db ?
 	buffer_out db BUFFER_OUT_LEN dup(?)
 	
-	help_msg db 'Usage: diss [output_file] [input_file]', 0Dh, 0Ah
+	help_msg db 'Usage: diss output_file input_file', 0Dh, 0Ah
 			db 'Disassembles 16-bit 8086 machine code.', 0Dh, 0Ah
 			db 'Example: diss output.asm input.com', 0Dh, 0Ah
 			db ' - output_file: The file to write the disassembly to.', 0Dh, 0Ah
