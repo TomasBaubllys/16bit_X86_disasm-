@@ -29,7 +29,7 @@ diss [destination.asm] [source.com]
 - [x] Add `h` at the end of every number (hex).
 - [ ] Move segment change to the same line as the command. 
 - [ ] Move `rep` to the same line as the command. 
-- [ ] Fix most of the internal jump names. 
+- [x] Fix most of the internal jump names. 
 - [x] Fix the order of the procedures. 
 - [ ] Remove unnecessary code. 
 - [ ] Improve `.exe` file handling. 

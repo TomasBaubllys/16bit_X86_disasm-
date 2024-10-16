@@ -742,7 +742,7 @@ read_buffer proc
 	ret
 endp
 
-; assumes the byte is in al FIX NAMING  
+; assumes the byte is in al 
 mov_byte_hex_buffer_out proc
 	push cx ax
 	
@@ -753,11 +753,11 @@ mov_byte_hex_buffer_out proc
 	push ax 				; save the remainder
 
 	cmp al, 0Ah
-	jb _print_first_hex
+	jb  _mov_byte_hex_buffer_out_first_hex ;_print_first_hex
 	
 	add al, 7				; add if its a letter
 	
-	_print_first_hex:
+	_mov_byte_hex_buffer_out_first_hex:
 		add al, '0'
 		mov byte ptr [bx], al
 		inc bx
@@ -767,11 +767,11 @@ mov_byte_hex_buffer_out proc
 	
 	mov al, ah 
 	cmp al, 0Ah
-	jb _print_second_hex
+	jb _mov_byte_hex_buffer_out_second_hex
 	
 	add al, 7
 	
-	_print_second_hex:
+	_mov_byte_hex_buffer_out_second_hex:
 		add al, '0'
 		mov byte ptr [bx], al
 		inc bx
