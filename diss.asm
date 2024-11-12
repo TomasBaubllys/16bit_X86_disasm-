@@ -168,7 +168,7 @@ JUMPS																		; for conditional long jumps
 			  _xor db 06h, 04h, 'xor'
 			  _cmp db 07h, 04h, 'cmp'
 				   
-	opcode_1000_010x_to_111x db 02h, 05h, 'movs' ; move b or w depending to the _w
+	opcode_1010_010x_to_111x db 02h, 05h, 'movs' ; move b or w depending to the _w
 							 db 03h, 05h, 'cmps'
 							 db 04h, 05h, 'test'
 							 db 05h, 05h, 'stos'
@@ -2110,7 +2110,7 @@ endp
 
 ; expects _w to be set
 handle_1010_010x_111x proc
-	lea di, opcode_1000_010x_to_111x
+	lea di, opcode_1010_010x_to_111x
 	
 	; extract the id
 	mov al, byte ptr [si]
