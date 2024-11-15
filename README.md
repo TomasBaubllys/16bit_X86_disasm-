@@ -1,6 +1,6 @@
 ### 8086 16-bit Disassembler
 
-**Tested on DOSBox 0.74 using TASM**
+**Tested on DOSBox 0.74 using TASM v3.1 and TLINK v3.0**
 
 **How to compile using TASM:**
 
